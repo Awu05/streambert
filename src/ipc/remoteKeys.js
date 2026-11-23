@@ -16,10 +16,14 @@ const REPEATABLE = {
 function mapRemoteKey(input, enabled) {
   if (!enabled || input.type !== "keyDown") return null;
   if (REPEATABLE[input.key]) return REPEATABLE[input.key];
-  if (input.isAutoRepeat) return null;
-  if (input.key === "Enter" || input.key === " ") return "playPause";
-  if (BACK_KEYS.has(input.key)) return "back";
-  return null;
+  const action =
+    input.key === "Enter" || input.key === " "
+      ? "playPause"
+      : BACK_KEYS.has(input.key)
+        ? "back"
+        : null;
+  // Held OK/Back: swallow the repeats so the player doesn't toggle again
+  return action && input.isAutoRepeat ? "ignore" : action;
 }
 
 const TOAST = `function toast(msg) {
@@ -50,8 +54,8 @@ const VIDEO_ACTIONS = {
 function actionScript(action) {
   if (action === "clickCentre") {
     // Click whatever sits at this frame's centre (poster / big play button).
-    // Returns false over an <iframe>, so a deeper frame handles it instead.
-    return `(function () { if (innerWidth < 200 || innerHeight < 150) return false; var x = innerWidth / 2, y = innerHeight / 2; var el = document.elementFromPoint(x, y); if (!el || el.tagName === "IFRAME") return false; var o = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, view: window }; ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(function (t) { el.dispatchEvent(t.indexOf("pointer") === 0 ? new PointerEvent(t, Object.assign({ pointerType: "mouse", isPrimary: true }, o)) : new MouseEvent(t, o)); }); return true; })()`;
+    // Over an <iframe>, returns its index in window.frames to descend into.
+    return `(function () { if (innerWidth < 200 || innerHeight < 150) return false; var x = innerWidth / 2, y = innerHeight / 2; var el = document.elementFromPoint(x, y); if (!el) return false; if (el.tagName === "IFRAME" || el.tagName === "FRAME") { var i = Array.prototype.indexOf.call(window.frames, el.contentWindow); return i >= 0 ? i : false; } var o = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, view: window }; ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(function (t) { el.dispatchEvent(t.indexOf("pointer") === 0 ? new PointerEvent(t, Object.assign({ pointerType: "mouse", isPrimary: true }, o)) : new MouseEvent(t, o)); }); return true; })()`;
   }
   if (action === "exitFullscreen") {
     return `(function () { if (!document.fullscreenElement) return false; document.exitFullscreen().catch(function () {}); return true; })()`;
@@ -81,12 +85,16 @@ async function run(wc, action) {
   for (const f of frames) {
     if (await runIn(f, actionScript(action))) return;
   }
-  // No <video> yet (poster / play overlay): click the player's centre,
-  // deepest frame first. Done in-page because sendInputEvent clicks don't
-  // reach cross-origin iframes.
+  // No <video> yet (poster / play overlay): click the player's centre.
+  // Starts at the top and follows the iframe under the centre, so only the
+  // visible player is clicked. Done in-page because sendInputEvent clicks
+  // don't reach cross-origin iframes.
   if (action === "playPause") {
-    for (const f of [...frames].reverse()) {
-      if (await runIn(f, actionScript("clickCentre"), true)) return;
+    let frame = wc.mainFrame;
+    for (let depth = 0; frame && depth < 8; depth++) {
+      const r = await runIn(frame, actionScript("clickCentre"), true);
+      if (typeof r !== "number") return;
+      frame = frame.frames[r];
     }
   }
 }
@@ -103,7 +111,7 @@ function attach(wc) {
     const action = mapRemoteKey(input, enabled);
     if (!action) return;
     event.preventDefault();
-    run(wc, action).catch(() => {});
+    if (action !== "ignore") run(wc, action).catch(() => {});
   });
 }
 

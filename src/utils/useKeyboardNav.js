@@ -9,6 +9,9 @@ import {
 } from "./gamepadSpatialNav";
 import { isPlayerGamepadActive } from "./gamepadPlayerState";
 
+// Asks the open player page to stop playback (see MoviePage / TVPage).
+export const PLAYER_BACK_EVENT = "streambert:player-remote-back";
+
 /**
  * TV remote / keyboard navigation, reusing the gamepad spatial navigation.
  *  Arrows -> move focus, Enter -> activate, Escape/Backspace/Back -> close
@@ -32,10 +35,14 @@ export function useKeyboardNav({ enabled, onBack }) {
       const action = mapNavKey({ key: e.key, repeat: e.repeat, inEditable });
       if (!action) return;
       e.preventDefault();
-      // Playing but focus slipped to the app: hand it back to the player
-      // (main handles the keys there) instead of clicking a stale button.
+      if (action === "ignore") return;
+      // Playing but focus slipped to the app: Back leaves the player (works
+      // even if the player crashed); other keys hand focus back to it
+      // instead of clicking a stale button.
       if (isPlayerGamepadActive()) {
-        document.querySelector("webview")?.focus();
+        if (action === "back")
+          window.dispatchEvent(new CustomEvent(PLAYER_BACK_EVENT));
+        else document.querySelector('webview[partition="persist:player"]')?.focus();
         return;
       }
       if (action === "back") {

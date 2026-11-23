@@ -16,8 +16,8 @@ export function mapNavKey({ key, repeat, inEditable }) {
     return null;
   }
   if (DIRECTIONS[key]) return DIRECTIONS[key];
-  if (repeat) return null;
-  if (key === "Enter") return "select";
-  if (BACK_KEYS.has(key)) return "back";
-  return null;
+  const action =
+    key === "Enter" ? "select" : BACK_KEYS.has(key) ? "back" : null;
+  // Held OK/Back: swallow the repeats so buttons aren't clicked again
+  return action && repeat ? "ignore" : action;
 }

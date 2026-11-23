@@ -75,6 +75,7 @@ import {
 import { useSourceId } from "../utils/useSourceId";
 import { setPlayerGamepadActive } from "../utils/gamepadPlayerState";
 import { useTvRemoteMode } from "../utils/tvRemoteMode";
+import { PLAYER_BACK_EVENT } from "../utils/useKeyboardNav";
 import HiAnimeLoader from "../components/HiAnimeLoader";
 
 export default function MoviePage({
@@ -569,9 +570,12 @@ export default function MoviePage({
     const focus = () => wv.focus();
     wv.addEventListener("dom-ready", focus);
     focus();
-    const h = window.electron?.onPlayerRemoteBack?.(() => setPlaying(false));
+    const stop = () => setPlaying(false);
+    const h = window.electron?.onPlayerRemoteBack?.(stop);
+    window.addEventListener(PLAYER_BACK_EVENT, stop);
     return () => {
       wv.removeEventListener("dom-ready", focus);
+      window.removeEventListener(PLAYER_BACK_EVENT, stop);
       if (h) window.electron.offPlayerRemoteBack(h);
     };
   }, [playing, tvRemote, playerSource]);
