@@ -6,6 +6,7 @@ import {
   dismissActiveOverlay,
   ensureInitialFocus,
   setGamepadFocus,
+  getGamepadFocus,
 } from "./gamepadSpatialNav";
 import { isPlayerGamepadActive } from "./gamepadPlayerState";
 
@@ -57,8 +58,15 @@ export function useKeyboardNav({ enabled, onBack }) {
         t.blur();
       }
       ensureInitialFocus();
-      if (action === "select") confirmGamepadFocus();
-      else moveGamepadFocus(action);
+      if (action === "select") return void confirmGamepadFocus();
+      const wasInSidebar = !!getGamepadFocus()?.closest(".sidebar");
+      moveGamepadFocus(action);
+      // Left into the sidebar lands on its Back arrow (TV remotes' own Back
+      // button may be kept by the browser, e.g. TV Bro)
+      if (action === "left" && !wasInSidebar) {
+        const back = document.querySelector(".sidebar [data-nav-back]");
+        if (back && getGamepadFocus()?.closest(".sidebar")) setGamepadFocus(back);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

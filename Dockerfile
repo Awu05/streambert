@@ -107,7 +107,7 @@ COPY public/sized/256x256.png /usr/share/selkies/www/icon.png
 # Make mpv the default app for video files (used when the app hands a file to
 # the system via xdg-open).
 # Load streambert-device.js in the Selkies page.
-RUN sed -i 's/\r$//' /usr/local/bin/streambert-launch /defaults/autostart /etc/mpv/mpv.conf /etc/mpv/script-opts/uosc.conf /etc/mpv/input.conf /usr/share/selkies/selkies-dashboard/streambert-device.js \
+RUN sed -i 's/\r$//' /usr/local/bin/streambert-launch /defaults/autostart /etc/mpv/mpv.conf /etc/mpv/script-opts/uosc.conf /etc/mpv/input.conf /etc/mpv/scripts/double-down-exit.lua /usr/share/selkies/selkies-dashboard/streambert-device.js \
  && chmod +x /usr/local/bin/streambert-launch /defaults/autostart \
  && { grep -q streambert-device.js /usr/share/selkies/selkies-dashboard/index.html \
       || sed -i 's#</head>#<script src="streambert-device.js"></script></head>#' /usr/share/selkies/selkies-dashboard/index.html; } \

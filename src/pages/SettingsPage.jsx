@@ -1692,9 +1692,8 @@ function AppearanceSection() {
               TV remote / keyboard navigation
             </div>
             <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
-              Use arrow keys, Enter and Back (TV remotes) to move around and
-              control playback: Enter play/pause, ←/→ seek, ↑/↓ volume, Back
-              exit.
+              Use arrow keys and Enter (TV remotes) to move around and control
+              playback: Enter play/pause, ←/→ seek, ↓ twice or Back to exit.
             </div>
           </div>
         </div>

@@ -6,12 +6,9 @@
 const { ipcMain } = require("electron");
 
 const BACK_KEYS = new Set(["Escape", "Backspace", "GoBack", "BrowserBack"]);
-const REPEATABLE = {
-  ArrowLeft: "seekBack",
-  ArrowRight: "seekForward",
-  ArrowUp: "volUp",
-  ArrowDown: "volDown",
-};
+const REPEATABLE = { ArrowLeft: "seekBack", ArrowRight: "seekForward" };
+// Down twice leaves (TV Bro keeps the remote's Back button for itself)
+const DOUBLE_DOWN_MS = 2000;
 
 function mapRemoteKey(input, enabled) {
   if (!enabled || input.type !== "keyDown") return null;
@@ -21,8 +18,10 @@ function mapRemoteKey(input, enabled) {
       ? "playPause"
       : BACK_KEYS.has(input.key)
         ? "back"
-        : null;
-  // Held OK/Back: swallow the repeats so the player doesn't toggle again
+        : input.key === "ArrowDown"
+          ? "downPress"
+          : null;
+  // Held OK/Back/Down: swallow the repeats so nothing fires twice
   return action && input.isAutoRepeat ? "ignore" : action;
 }
 
@@ -46,8 +45,6 @@ const VIDEO_ACTIONS = {
   playPause: `if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () {}); toast("Play"); } else { v.pause(); toast("Pause"); }`,
   seekBack: `v.currentTime = Math.max(0, v.currentTime - 10); toast("-10s");`,
   seekForward: `v.currentTime = Math.min(v.duration || 1e9, v.currentTime + 10); toast("+10s");`,
-  volUp: `v.muted = false; v.volume = Math.min(1, v.volume + 0.1); toast("Volume " + Math.round(v.volume * 100) + "%");`,
-  volDown: `v.volume = Math.max(0, v.volume - 0.1); toast("Volume " + Math.round(v.volume * 100) + "%");`,
 };
 
 // JS expression run in one frame; true if it acted on something there.
@@ -56,6 +53,9 @@ function actionScript(action) {
     // Click whatever sits at this frame's centre (poster / big play button).
     // Over an <iframe>, returns its index in window.frames to descend into.
     return `(function () { if (innerWidth < 200 || innerHeight < 150) return false; var x = innerWidth / 2, y = innerHeight / 2; var el = document.elementFromPoint(x, y); if (!el) return false; if (el.tagName === "IFRAME" || el.tagName === "FRAME") { var i = Array.prototype.indexOf.call(window.frames, el.contentWindow); return i >= 0 ? i : false; } var o = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, view: window }; ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(function (t) { el.dispatchEvent(t.indexOf("pointer") === 0 ? new PointerEvent(t, Object.assign({ pointerType: "mouse", isPrimary: true }, o)) : new MouseEvent(t, o)); }); return true; })()`;
+  }
+  if (action === "hint") {
+    return `(function () { ${TOAST} if (!document.querySelector("video")) return false; toast("Press ↓ again to exit"); return true; })()`;
   }
   if (action === "exitFullscreen") {
     return `(function () { if (!document.fullscreenElement) return false; document.exitFullscreen().catch(function () {}); return true; })()`;
@@ -71,14 +71,29 @@ const runIn = (frame, script, userGesture = false) =>
     .then(() => frame.executeJavaScript(script, userGesture))
     .catch(() => false);
 
-async function run(wc, action) {
+const lastDown = new WeakMap();
+
+async function run(wc, action, now = Date.now(), getMw = getMainWindow) {
   const frames = wc.mainFrame.framesInSubtree;
+  if (action === "downPress") {
+    const prev = lastDown.get(wc);
+    if (prev != null && now - prev <= DOUBLE_DOWN_MS) {
+      lastDown.delete(wc);
+      action = "back";
+    } else {
+      lastDown.set(wc, now);
+      for (const f of frames) {
+        if (await runIn(f, actionScript("hint"))) return;
+      }
+      return;
+    }
+  }
   if (action === "back") {
     const exited = await Promise.all(
       frames.map((f) => runIn(f, actionScript("exitFullscreen"))),
     );
     if (exited.some(Boolean)) return;
-    const mw = getMainWindow();
+    const mw = getMw();
     if (mw && !mw.isDestroyed()) mw.webContents.send("player-remote-back");
     return;
   }

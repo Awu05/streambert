@@ -32,22 +32,30 @@ rebuilds and image updates.
 
 ## Watching on a TV
 
-Made for [TV Bro](https://github.com/truefedex/tv-bro) on an Android TV box,
-controlled with the TV remote.
+Tested with [TV Bro](https://github.com/truefedex/tv-bro) on an NVIDIA Shield,
+controlled with the Shield remote.
 
 1. Open `https://<server-ip>:3001` in TV Bro and log in.
-2. The container starts with **TV remote mode** on: a red ring shows what's
+2. Switch TV Bro to **direct navigation mode**: long-press OK and pick it from
+   the menu. Without it, TV Bro turns the arrows into a mouse pointer and
+   Streambert never sees them. You may need to do this each time you open
+   the page.
+3. The container starts with **TV remote mode** on: a red ring shows what's
    selected, and the UI is 1.5× larger so it's readable from the couch. You
    can turn the mode off in **Settings → Appearance → TV remote / keyboard
    navigation**.
 
+TV Bro only passes the arrows and OK to the page. The remote's Back button
+opens TV Bro's toolbar instead, so Streambert uses these:
+
 | Remote button | In the app | In a video |
 | --- | --- | --- |
-| Arrows | Move the red ring | ←/→ seek 10 s, ↑/↓ volume |
+| Arrows | Move the red ring. ← from the page jumps to the **‹ back** arrow at the top of the sidebar | ←/→ seek 10 s |
 | OK | Open / press | Play / pause (also starts players that show a poster) |
-| Back | Close the dialog, else go back | Leave fullscreen, else leave the player |
+| ↓ twice | — | Leave fullscreen, else leave the player |
 
-Downloaded files play in mpv with the same buttons, and Back closes it.
+Volume uses the remote's own volume buttons. Downloaded files play in mpv with
+the same buttons. With a keyboard, Esc / Backspace also work as Back.
 
 ## Screen size
 
