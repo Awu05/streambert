@@ -30,6 +30,46 @@ docker compose up -d --build
 Settings, the library and watch history are stored in `./config` and survive
 rebuilds and image updates.
 
+## Watching on a TV
+
+Made for [TV Bro](https://github.com/truefedex/tv-bro) on an Android TV box,
+controlled with the TV remote.
+
+1. Open `https://<server-ip>:3001` in TV Bro and log in.
+2. The container starts with **TV remote mode** on: a red ring shows what's
+   selected, and the UI is 1.5× larger so it's readable from the couch. You
+   can turn the mode off in **Settings → Appearance → TV remote / keyboard
+   navigation**.
+
+| Remote button | In the app | In a video |
+| --- | --- | --- |
+| Arrows | Move the red ring | ←/→ seek 10 s, ↑/↓ volume |
+| OK | Open / press | Play / pause (also starts players that show a poster) |
+| Back | Close the dialog, else go back | Leave fullscreen, else leave the player |
+
+Downloaded files play in mpv with the same buttons, and Back closes it.
+
+## Watching on your phone
+
+The screen is a fixed 1920×1080 picture, scaled down to fit. Turn the phone
+sideways (landscape) for the best view.
+
+**From outside your home:** use [Tailscale](https://tailscale.com/). Install it
+on the server and on your phone and sign in to both with the same account,
+then open `https://<server's tailscale name>:3001` on the phone. No router
+ports need to be opened, and nothing is exposed to the internet. A reverse
+proxy with a real certificate also works, but keep the password set.
+
+**Tips:**
+
+- In the Selkies sidebar (the small handle on the left edge), switch the touch
+  mode to direct touch, so a tap clicks where you tap.
+- On mobile data, lower **Frames per second** to 30 and raise **CRF** in the
+  sidebar's video settings. Each browser keeps its own settings, so your TV
+  keeps full quality.
+- There is only one session. Opening Streambert on the phone takes over the
+  screen the TV is showing.
+
 ## Building multi-arch images
 
 Build for both architectures and push to a registry:
