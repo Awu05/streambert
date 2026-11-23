@@ -1,8 +1,23 @@
 const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
+// Env-driven defaults ({ tvRemoteMode, zoom }), set by the Docker image
+const envDefaults = ipcRenderer.sendSync("get-env-defaults");
+
 contextBridge.exposeInMainWorld("electron", {
   // Cleaned Chromium UA (no Electron/app tokens)
   cleanUserAgent: ipcRenderer.sendSync("get-clean-user-agent"),
+
+  envDefaults,
+
+  // TV remote mode: main handles remote keys inside player webviews
+  setTvRemoteMode: (on) => ipcRenderer.send("set-tv-remote-mode", !!on),
+  onPlayerRemoteBack: (cb) => {
+    const h = () => cb();
+    ipcRenderer.on("player-remote-back", h);
+    return h;
+  },
+  offPlayerRemoteBack: (h) =>
+    ipcRenderer.removeListener("player-remote-back", h),
 
   // m3u8 capture
   onM3u8Found: (cb) => {
@@ -169,7 +184,8 @@ contextBridge.exposeInMainWorld("electron", {
   offWindowMaximize: (h) => ipcRenderer.removeListener("window-maximized", h),
   getVideoDuration: (filePath) =>
     ipcRenderer.invoke("get-video-duration", filePath),
-  setZoomFactor: (factor) => webFrame.setZoomFactor(factor),
+  // Font-size zoom is relative to the env base zoom (1 on desktop)
+  setZoomFactor: (factor) => webFrame.setZoomFactor(factor * envDefaults.zoom),
   // Auto-updater
   detectUpdateFormat: () => ipcRenderer.invoke("detect-update-format"),
   downloadAndInstallUpdate: (args) =>

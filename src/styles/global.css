@@ -2243,6 +2243,11 @@ kbd {
     transform: translateY(-4px) scale(1.02);
     box-shadow: var(--red-glow);
 }
+/* TV remote mode: easier to spot from the couch */
+body.tv-remote .gamepad-focused {
+    outline-width: 5px;
+    outline-offset: 5px;
+}
 
 .saved-thumb[draggable="true"]:active {
     cursor: grabbing;

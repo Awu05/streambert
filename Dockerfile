@@ -59,7 +59,9 @@ RUN mkdir /uosc && unzip -q /tmp/uosc.zip -d /uosc
 FROM ghcr.io/linuxserver/baseimage-selkies:debiantrixie
 
 ENV TITLE=Streambert \
-    NO_DECOR=true
+    NO_DECOR=true \
+    STREAMBERT_TV_MODE=1 \
+    STREAMBERT_ZOOM=1.5
 
 # Electron runtime libraries, ffmpeg (needed for downloads) and mpv (the app
 # plays downloaded files and "open in external player" streams through mpv;

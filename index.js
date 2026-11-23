@@ -46,6 +46,9 @@ const subtitlesIpc = require("./src/ipc/subtitles");
 const hianimeIpc = require("./src/ipc/hianime");
 const playerIpc = require("./src/ipc/player");
 const discordRpc = require("./src/ipc/discordRpc");
+const { parseEnvDefaults } = require("./src/ipc/envDefaults");
+
+const ENV_DEFAULTS = parseEnvDefaults(process.env);
 
 // -- Ad/tracker block list -----------------------------------------------------
 const BLOCKED_HOSTS = [
@@ -299,6 +302,10 @@ ipcMain.on("get-clean-user-agent", (event) => {
   event.returnValue = buildCleanUserAgent();
 });
 
+ipcMain.on("get-env-defaults", (event) => {
+  event.returnValue = ENV_DEFAULTS;
+});
+
 // -- Popup handling ------------------------------------------------------------
 // Webview/pop-out popups are denied. Some players (e.g. Vidrift) test
 // window.open() on the first click and show "Remove sandboxing to enable
@@ -510,6 +517,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      zoomFactor: ENV_DEFAULTS.zoom,
       backgroundThrottling: true,
       spellcheck: false,
       // Caps the renderer's V8 heap + exposes gc() for manual GC hints after navigation
