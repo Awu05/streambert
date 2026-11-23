@@ -30,3 +30,31 @@
     setTimeout(send, 1000);
   })();
 })();
+
+// Touch devices: while typing, ignore the resize caused by the on-screen
+// keyboard, so the picture keeps its size and the keyboard just covers the
+// bottom (Selkies would shrink it into the strip above the keyboard). Loads
+// before Selkies, so this listener runs first.
+(function () {
+  if (!matchMedia("(pointer: coarse)").matches) return;
+  function typing() {
+    var a = document.activeElement;
+    return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA");
+  }
+  addEventListener(
+    "resize",
+    function (e) {
+      if (typing()) e.stopImmediatePropagation();
+    },
+    true,
+  );
+  addEventListener(
+    "focusout",
+    function () {
+      setTimeout(function () {
+        if (!typing()) dispatchEvent(new Event("resize"));
+      }, 300);
+    },
+    true,
+  );
+})();
