@@ -37,6 +37,14 @@
 // before Selkies, so this listener runs first.
 (function () {
   if (!matchMedia("(pointer: coarse)").matches) return;
+  // Selkies' floating keyboard button sits on the video controls (bottom
+  // right): move it to the middle of the right edge, smaller and faded.
+  var style = document.createElement("style");
+  style.textContent =
+    ".virtual-keyboard-button{top:50% !important;bottom:auto !important;" +
+    "right:8px !important;transform:translateY(-50%) scale(.8);opacity:.4}" +
+    ".virtual-keyboard-button:active{opacity:1}";
+  document.head.appendChild(style);
   function typing() {
     var a = document.activeElement;
     return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA");
