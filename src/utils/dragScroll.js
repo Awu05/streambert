@@ -46,8 +46,14 @@ export function enableDragScroll() {
     };
     dragging = false;
   };
+  const reset = () => {
+    start = null;
+    dragging = false;
+  };
   const onMove = (e) => {
     if (!start) return;
+    // Released outside the window (no pointerup seen): stop scrolling
+    if (!(e.buttons & 1)) return reset();
     if (!dragging && !isDragging(e.clientX - start.x, e.clientY - start.y))
       return;
     dragging = true;
@@ -71,12 +77,14 @@ export function enableDragScroll() {
   window.addEventListener("pointerdown", onDown, true);
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
+  window.addEventListener("pointercancel", reset, true);
   window.addEventListener("dragstart", onDragStart, true);
   return () => {
     document.body.classList.remove("drag-scroll");
     window.removeEventListener("pointerdown", onDown, true);
     window.removeEventListener("pointermove", onMove, true);
     window.removeEventListener("pointerup", onUp, true);
+    window.removeEventListener("pointercancel", reset, true);
     window.removeEventListener("dragstart", onDragStart, true);
   };
 }

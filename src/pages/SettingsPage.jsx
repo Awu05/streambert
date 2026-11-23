@@ -35,6 +35,7 @@ import { formatBytes } from "../utils/storage";
 import {
   isTvRemoteModeEnabled,
   setTvRemoteModeEnabled,
+  tvRemoteModeToSave,
 } from "../utils/tvRemoteMode";
 
 // ── Custom Select ─────────────────────────────────────────────────────────────
@@ -1273,6 +1274,7 @@ function AppearanceSection() {
     () => storage.get(STORAGE_KEYS.GAMEPAD_ENABLED) !== false,
   );
   const [tvRemote, setTvRemote] = useState(isTvRemoteModeEnabled);
+  const tvRemoteSaved = useRef(tvRemote);
   const [accentInPlayer, setAccentInPlayer] = useState(
     () => storage.get(STORAGE_KEYS.ACCENT_IN_PLAYER) !== false,
   );
@@ -1331,7 +1333,11 @@ function AppearanceSection() {
     storage.set(STORAGE_KEYS.REDUCE_ANIMATIONS, noAnim ? 1 : 0);
     storage.set(STORAGE_KEYS.GAMEPAD_ENABLED, gamepadEnabled);
     window.dispatchEvent(new CustomEvent("streambert:gamepad-settings-changed"));
-    setTvRemoteModeEnabled(tvRemote);
+    const tvRemoteChange = tvRemoteModeToSave(tvRemoteSaved.current, tvRemote);
+    if (tvRemoteChange !== undefined) {
+      setTvRemoteModeEnabled(tvRemoteChange);
+      tvRemoteSaved.current = tvRemoteChange;
+    }
     storage.set(STORAGE_KEYS.THEME, theme);
     if (theme === "custom") {
       storage.set(STORAGE_KEYS.CUSTOM_THEME_VARS, customVars);

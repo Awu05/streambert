@@ -3,15 +3,17 @@
 // a nested cross-origin iframe the renderer can't reach. Off unless the
 // renderer turns TV remote mode on, so desktop keys pass through untouched.
 
-const { ipcMain } = require("electron");
+const { ipcMain, webFrameMain } = require("electron");
 
 const BACK_KEYS = new Set(["Escape", "Backspace", "GoBack", "BrowserBack"]);
 const REPEATABLE = { ArrowLeft: "seekBack", ArrowRight: "seekForward" };
 // Down twice leaves (TV Bro keeps the remote's Back button for itself)
 const DOUBLE_DOWN_MS = 2000;
 
-function mapRemoteKey(input, enabled) {
+function mapRemoteKey(input, enabled, { editable = false } = {}) {
   if (!enabled || input.type !== "keyDown") return null;
+  // Shortcuts and typing in the page's own text boxes pass through
+  if (input.control || input.alt || input.meta || editable) return null;
   if (REPEATABLE[input.key]) return REPEATABLE[input.key];
   const action =
     input.key === "Enter" || input.key === " "
@@ -23,6 +25,26 @@ function mapRemoteKey(input, enabled) {
           : null;
   // Held OK/Back/Down: swallow the repeats so nothing fires twice
   return action && input.isAutoRepeat ? "ignore" : action;
+}
+
+// Injected into every player frame: reports text-box focus via the console,
+// which main reads synchronously when deciding whether to take a key.
+const FOCUS_REPORTER = `(function () {
+  if (window.__sbFocusReporter) return;
+  window.__sbFocusReporter = true;
+  function ed(el) {
+    return !!el && (el.isContentEditable || (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) &&
+      !/^(button|checkbox|radio|range|submit|reset|image|file|color)$/i.test(el.type || "")));
+  }
+  document.addEventListener("focusin", function (e) { if (ed(e.target)) console.debug("__sb_editable:1"); }, true);
+  document.addEventListener("focusout", function (e) { if (ed(e.target)) console.debug("__sb_editable:0"); }, true);
+})()`;
+
+const editable = new WeakMap();
+const isEditableFocused = (wc) => editable.get(wc) === true;
+function noteConsoleMessage(wc, message) {
+  if (message === "__sb_editable:1") editable.set(wc, true);
+  else if (message === "__sb_editable:0") editable.set(wc, false);
 }
 
 const TOAST = `function toast(msg) {
@@ -41,6 +63,15 @@ const TOAST = `function toast(msg) {
   } catch (e) {}
 }`;
 
+// The frame's main video: the largest visible one that has a source, so
+// hidden ad/preview videos are ignored.
+const PICK_VIDEO = `var vs = document.querySelectorAll("video"), v = null, best = 0;
+  for (var j = 0; j < vs.length; j++) {
+    var c = vs[j], r = c.getBoundingClientRect();
+    if (r.width < 100 || r.height < 60 || !(c.readyState > 0 || c.currentSrc)) continue;
+    if (r.width * r.height > best) { best = r.width * r.height; v = c; }
+  }`;
+
 const VIDEO_ACTIONS = {
   playPause: `if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () {}); toast("Play"); } else { v.pause(); toast("Pause"); }`,
   seekBack: `v.currentTime = Math.max(0, v.currentTime - 10); toast("-10s");`,
@@ -51,8 +82,8 @@ const VIDEO_ACTIONS = {
 function actionScript(action) {
   if (action === "clickCentre") {
     // Click whatever sits at this frame's centre (poster / big play button).
-    // Over an <iframe>, returns its index in window.frames to descend into.
-    return `(function () { if (innerWidth < 200 || innerHeight < 150) return false; var x = innerWidth / 2, y = innerHeight / 2; var el = document.elementFromPoint(x, y); if (!el) return false; if (el.tagName === "IFRAME" || el.tagName === "FRAME") { var i = Array.prototype.indexOf.call(window.frames, el.contentWindow); return i >= 0 ? i : false; } var o = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, view: window }; ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(function (t) { el.dispatchEvent(t.indexOf("pointer") === 0 ? new PointerEvent(t, Object.assign({ pointerType: "mouse", isPrimary: true }, o)) : new MouseEvent(t, o)); }); return true; })()`;
+    // Over an <iframe>, returns its src and index so main can descend into it.
+    return `(function () { if (innerWidth < 200 || innerHeight < 150) return false; var x = innerWidth / 2, y = innerHeight / 2; var el = document.elementFromPoint(x, y); if (!el) return false; if (el.tagName === "IFRAME" || el.tagName === "FRAME") { var i = Array.prototype.indexOf.call(window.frames, el.contentWindow); return el.src || i >= 0 ? { src: el.src || "", i: i } : false; } var o = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, view: window }; ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(function (t) { el.dispatchEvent(t.indexOf("pointer") === 0 ? new PointerEvent(t, Object.assign({ pointerType: "mouse", isPrimary: true }, o)) : new MouseEvent(t, o)); }); return true; })()`;
   }
   if (action === "hint") {
     return `(function () { ${TOAST} if (!document.querySelector("video")) return false; toast("Press ↓ again to exit"); return true; })()`;
@@ -60,7 +91,7 @@ function actionScript(action) {
   if (action === "exitFullscreen") {
     return `(function () { if (!document.fullscreenElement) return false; document.exitFullscreen().catch(function () {}); return true; })()`;
   }
-  return `(function () { ${TOAST} var v = document.querySelector("video"); if (!v) return false; ${VIDEO_ACTIONS[action]} return true; })()`;
+  return `(function () { ${TOAST} ${PICK_VIDEO} if (!v) return false; ${VIDEO_ACTIONS[action]} return true; })()`;
 }
 
 let enabled = false;
@@ -108,8 +139,9 @@ async function run(wc, action, now = Date.now(), getMw = getMainWindow) {
     let frame = wc.mainFrame;
     for (let depth = 0; frame && depth < 8; depth++) {
       const r = await runIn(frame, actionScript("clickCentre"), true);
-      if (typeof r !== "number") return;
-      frame = frame.frames[r];
+      if (!r || typeof r !== "object") return;
+      const kids = frame.frames || [];
+      frame = (r.src && kids.find((f) => f.url === r.src)) || kids[r.i];
     }
   }
 }
@@ -123,11 +155,34 @@ function register(getMainWindowFn) {
 
 function attach(wc) {
   wc.on("before-input-event", (event, input) => {
-    const action = mapRemoteKey(input, enabled);
+    const action = mapRemoteKey(input, enabled, {
+      editable: isEditableFocused(wc),
+    });
     if (!action) return;
     event.preventDefault();
     if (action !== "ignore") run(wc, action).catch(() => {});
   });
+  wc.on("console-message", (e, _level, message) =>
+    noteConsoleMessage(wc, e?.message ?? message),
+  );
+  wc.on("did-frame-finish-load", (_e, isMainFrame, processId, routingId) => {
+    if (isMainFrame) editable.set(wc, false);
+    if (!enabled) return; // desktop default: leave provider pages untouched
+    try {
+      webFrameMain
+        .fromId(processId, routingId)
+        ?.executeJavaScript(FOCUS_REPORTER)
+        .catch(() => {});
+    } catch {}
+  });
 }
 
-module.exports = { mapRemoteKey, actionScript, run, register, attach };
+module.exports = {
+  mapRemoteKey,
+  actionScript,
+  run,
+  register,
+  attach,
+  noteConsoleMessage,
+  isEditableFocused,
+};

@@ -65,7 +65,7 @@ function isModalRoot(el) {
 
 function getScopeRoot() {
   const overlays = Array.from(
-    document.querySelectorAll('[class*="overlay"]'),
+    document.querySelectorAll('[class*="overlay"], [class*="backdrop"]'),
   ).filter((el) => isVisible(el) && isModalRoot(el));
   if (overlays.length === 0) return document;
   return overlays[overlays.length - 1];
@@ -125,6 +125,11 @@ export function confirmGamepadFocus() {
   if (!el) return false;
   el.click();
   return true;
+}
+
+// True while a modal/overlay scopes navigation (see getScopeRoot).
+export function hasActiveOverlay() {
+  return getScopeRoot() !== document;
 }
 
 // Best-effort dismiss for the B button while a modal is open. Returns false

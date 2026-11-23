@@ -7,6 +7,8 @@ import {
   ensureInitialFocus,
   setGamepadFocus,
   getGamepadFocus,
+  hasActiveOverlay,
+  clearGamepadFocus,
 } from "./gamepadSpatialNav";
 import { isPlayerGamepadActive } from "./gamepadPlayerState";
 
@@ -37,14 +39,22 @@ export function useKeyboardNav({ enabled, onBack }) {
       if (!action) return;
       e.preventDefault();
       if (action === "ignore") return;
-      // Playing but focus slipped to the app: Back leaves the player (works
-      // even if the player crashed); other keys hand focus back to it
-      // instead of clicking a stale button.
+      // Playing but focus is on the app. Back closes an open dialog, else
+      // leaves the player (works even if the player crashed). Other keys go
+      // back to the player, unless a dialog is open or the player is blank
+      // (pop-out, loading): then they navigate the app's own buttons.
       if (isPlayerGamepadActive()) {
-        if (action === "back")
-          window.dispatchEvent(new CustomEvent(PLAYER_BACK_EVENT));
-        else document.querySelector('webview[partition="persist:player"]')?.focus();
-        return;
+        if (action === "back") {
+          if (!dismissActiveOverlay())
+            window.dispatchEvent(new CustomEvent(PLAYER_BACK_EVENT));
+          return;
+        }
+        const wv = document.querySelector('webview[partition="persist:player"]');
+        const src = wv?.getAttribute("src") || "about:blank";
+        if (!hasActiveOverlay() && src !== "about:blank") {
+          wv.focus();
+          return;
+        }
       }
       if (action === "back") {
         if (inEditable) t.blur();
@@ -68,7 +78,33 @@ export function useKeyboardNav({ enabled, onBack }) {
         if (back && getGamepadFocus()?.closest(".sidebar")) setGamepadFocus(back);
       }
     };
+    // A tap/click moves the highlight too, so OK never acts on a stale item
+    const onPointer = (e) => {
+      const el = e.target?.closest?.(
+        'button, a[href], [role="button"], .card, .sidebar-btn, [tabindex]:not([tabindex="-1"])',
+      );
+      if (el) setGamepadFocus(el, { scroll: false });
+      else clearGamepadFocus();
+    };
+    // A dialog opened over a playing video: move focus out of the player so
+    // the remote drives the dialog; hand it back when the dialog closes.
+    let overlayOverPlayer = false;
+    const watch = setInterval(() => {
+      if (!isPlayerGamepadActive()) return void (overlayOverPlayer = false);
+      const wv = document.querySelector('webview[partition="persist:player"]');
+      const overlay = hasActiveOverlay();
+      if (overlay && !overlayOverPlayer && document.activeElement === wv) {
+        wv.blur();
+        ensureInitialFocus();
+      } else if (!overlay && overlayOverPlayer) wv?.focus();
+      overlayOverPlayer = overlay;
+    }, 300);
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("pointerdown", onPointer, true);
+    return () => {
+      clearInterval(watch);
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener("pointerdown", onPointer, true);
+    };
   }, [enabled]);
 }

@@ -76,6 +76,7 @@ import { useSourceId } from "../utils/useSourceId";
 import { setPlayerGamepadActive } from "../utils/gamepadPlayerState";
 import { useTvRemoteMode } from "../utils/tvRemoteMode";
 import { PLAYER_BACK_EVENT } from "../utils/useKeyboardNav";
+import { dismissActiveOverlay } from "../utils/gamepadSpatialNav";
 import HiAnimeLoader from "../components/HiAnimeLoader";
 
 export default function MoviePage({
@@ -570,7 +571,10 @@ export default function MoviePage({
     const focus = () => wv.focus();
     wv.addEventListener("dom-ready", focus);
     focus();
-    const stop = () => setPlaying(false);
+    // An open dialog closes first; otherwise leave the player
+    const stop = () => {
+      if (!dismissActiveOverlay()) setPlaying(false);
+    };
     const h = window.electron?.onPlayerRemoteBack?.(stop);
     window.addEventListener(PLAYER_BACK_EVENT, stop);
     return () => {

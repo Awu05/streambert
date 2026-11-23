@@ -49,10 +49,17 @@
     var a = document.activeElement;
     return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA");
   }
+  // Only while the keyboard actually shrinks the screen: same width, clearly
+  // shorter than before. Rotations and a closed keyboard pass through.
+  var base = { w: innerWidth, h: innerHeight };
   addEventListener(
     "resize",
     function (e) {
-      if (typing()) e.stopImmediatePropagation();
+      if (typing() && innerWidth === base.w && innerHeight < base.h * 0.85) {
+        e.stopImmediatePropagation();
+        return;
+      }
+      base = { w: innerWidth, h: innerHeight };
     },
     true,
   );

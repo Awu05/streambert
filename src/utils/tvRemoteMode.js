@@ -11,6 +11,11 @@ export function resolveTvRemoteMode(stored, envDefault) {
   return envDefault === true;
 }
 
+// Value to store on save, or undefined when the toggle wasn't changed (so an
+// untouched setting keeps following the env default).
+export const tvRemoteModeToSave = (initial, current) =>
+  current !== initial ? current : undefined;
+
 export function isTvRemoteModeEnabled() {
   return resolveTvRemoteMode(
     storage.get(STORAGE_KEYS.TV_REMOTE_MODE),
