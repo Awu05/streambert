@@ -63,11 +63,9 @@ ENV TITLE=Streambert \
     STREAMBERT_TV_MODE=1 \
     STREAMBERT_ZOOM=1.5
 
-# One fixed 1080p screen for TVs and phones (scaled to fit), and a sidebar
-# trimmed to what's useful for watching.
-ENV SELKIES_MANUAL_WIDTH=1920 \
-    SELKIES_MANUAL_HEIGHT=1080 \
-    SELKIES_MICROPHONE_ENABLED=false \
+# Sidebar trimmed to what's useful for watching. Screen size is chosen per
+# browser by streambert-device.js (TVs/phones: 1080p, desktops: fill window).
+ENV SELKIES_MICROPHONE_ENABLED=false \
     SELKIES_UI_SIDEBAR_SHOW_APPS=false \
     SELKIES_UI_SIDEBAR_SHOW_FILES=false \
     SELKIES_UI_SIDEBAR_SHOW_WEBCAM=false \
@@ -108,8 +106,12 @@ COPY public/sized/256x256.png /usr/share/selkies/www/icon.png
 # Strip any CRLF from Windows checkouts, then make the scripts executable.
 # Make mpv the default app for video files (used when the app hands a file to
 # the system via xdg-open).
-RUN sed -i 's/\r$//' /usr/local/bin/streambert-launch /defaults/autostart /etc/mpv/mpv.conf /etc/mpv/script-opts/uosc.conf /etc/mpv/input.conf \
+# Load streambert-device.js in the Selkies page.
+RUN sed -i 's/\r$//' /usr/local/bin/streambert-launch /defaults/autostart /etc/mpv/mpv.conf /etc/mpv/script-opts/uosc.conf /etc/mpv/input.conf /usr/share/selkies/selkies-dashboard/streambert-device.js \
  && chmod +x /usr/local/bin/streambert-launch /defaults/autostart \
+ && { grep -q streambert-device.js /usr/share/selkies/selkies-dashboard/index.html \
+      || sed -i 's#</head>#<script src="streambert-device.js"></script></head>#' /usr/share/selkies/selkies-dashboard/index.html; } \
+ && grep -q streambert-device.js /usr/share/selkies/selkies-dashboard/index.html \
  && for t in video/mp4 video/x-matroska video/webm video/x-msvideo video/quicktime video/mp2t; do \
       echo "$t=mpv.desktop"; done \
       | sed '1i [Default Applications]' > /etc/xdg/mimeapps.list

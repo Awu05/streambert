@@ -49,10 +49,22 @@ controlled with the TV remote.
 
 Downloaded files play in mpv with the same buttons, and Back closes it.
 
+## Screen size
+
+Each browser picks its screen size the first time it connects:
+
+- **Computers** get a screen that matches the browser window, so it fills any
+  window or monitor, including ultrawide ones.
+- **TVs and phones** (narrow or touch screens) get a fixed 1920×1080 screen,
+  scaled to fit.
+
+Change it later in the Selkies sidebar's screen settings; each browser
+remembers its own choice. There is still one shared session: the device that
+connects last sets the size.
+
 ## Watching on your phone
 
-The screen is a fixed 1920×1080 picture, scaled down to fit. Turn the phone
-sideways (landscape) for the best view.
+Turn the phone sideways (landscape) for the best view.
 
 **From outside your home:** use [Tailscale](https://tailscale.com/). Install it
 on the server and on your phone and sign in to both with the same account,
