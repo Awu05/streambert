@@ -5,6 +5,7 @@ import {
   confirmGamepadFocus,
   dismissActiveOverlay,
   ensureInitialFocus,
+  setGamepadFocus,
 } from "./gamepadSpatialNav";
 import { isPlayerGamepadActive } from "./gamepadPlayerState";
 
@@ -21,7 +22,6 @@ export function useKeyboardNav({ enabled, onBack }) {
     if (!enabled) return;
     const handler = (e) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (isPlayerGamepadActive()) return;
       const t = e.target;
       const tag = (t?.tagName || "").toUpperCase();
       const inEditable =
@@ -32,10 +32,22 @@ export function useKeyboardNav({ enabled, onBack }) {
       const action = mapNavKey({ key: e.key, repeat: e.repeat, inEditable });
       if (!action) return;
       e.preventDefault();
-      if (inEditable) t.blur();
-      if (action === "back") {
-        if (!inEditable && !dismissActiveOverlay()) onBackRef.current?.();
+      // Playing but focus slipped to the app: hand it back to the player
+      // (main handles the keys there) instead of clicking a stale button.
+      if (isPlayerGamepadActive()) {
+        document.querySelector("webview")?.focus();
         return;
+      }
+      if (action === "back") {
+        if (inEditable) t.blur();
+        else if (!dismissActiveOverlay()) onBackRef.current?.();
+        return;
+      }
+      if (inEditable) {
+        // Navigate from the field itself, then leave it so Enter activates
+        // the next item instead of typing into the field.
+        setGamepadFocus(t, { scroll: false });
+        t.blur();
       }
       ensureInitialFocus();
       if (action === "select") confirmGamepadFocus();

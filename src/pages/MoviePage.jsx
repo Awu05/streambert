@@ -74,6 +74,7 @@ import {
 } from "../utils/playerGamepadScript";
 import { useSourceId } from "../utils/useSourceId";
 import { setPlayerGamepadActive } from "../utils/gamepadPlayerState";
+import { useTvRemoteMode } from "../utils/tvRemoteMode";
 import HiAnimeLoader from "../components/HiAnimeLoader";
 
 export default function MoviePage({
@@ -555,10 +556,25 @@ export default function MoviePage({
       );
   }, []);
 
+  const tvRemote = useTvRemoteMode();
   useEffect(() => {
-    setPlayerGamepadActive(gamepadEnabled && playing);
+    setPlayerGamepadActive((gamepadEnabled || tvRemote) && playing);
     return () => setPlayerGamepadActive(false);
-  }, [playing, gamepadEnabled]);
+  }, [playing, gamepadEnabled, tvRemote]);
+
+  // TV remote mode: main handles player keys; it asks us to leave on Back.
+  useEffect(() => {
+    const wv = webviewRef.current;
+    if (!wv || !playing || !tvRemote) return;
+    const focus = () => wv.focus();
+    wv.addEventListener("dom-ready", focus);
+    focus();
+    const h = window.electron?.onPlayerRemoteBack?.(() => setPlaying(false));
+    return () => {
+      wv.removeEventListener("dom-ready", focus);
+      if (h) window.electron.offPlayerRemoteBack(h);
+    };
+  }, [playing, tvRemote, playerSource]);
 
   useEffect(() => {
     const wv = webviewRef.current;
