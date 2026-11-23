@@ -34,6 +34,7 @@ import CloseConfirmModal from "./components/CloseConfirmModal";
 import UpdateModal from "./components/UpdateModal";
 import { useGamepadNav } from "./utils/useGamepadNav";
 import { useTvRemoteMode } from "./utils/tvRemoteMode";
+import { useKeyboardNav } from "./utils/useKeyboardNav";
 
 // Lazy-loaded pages: each chunk is only downloaded when the user first visits
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -754,6 +755,7 @@ export default function App() {
     document.body.classList.toggle("tv-remote", tvRemote);
     window.electron?.setTvRemoteMode?.(tvRemote);
   }, [tvRemote]);
+  useKeyboardNav({ enabled: tvRemote, onBack: navigateBack });
   useEffect(() => {
     if (!gamepadEnabled) return;
     if (gamepadConnected && !gamepadToastedRef.current) {
