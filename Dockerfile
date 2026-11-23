@@ -61,7 +61,8 @@ FROM ghcr.io/linuxserver/baseimage-selkies:debiantrixie
 ENV TITLE=Streambert \
     NO_DECOR=true \
     STREAMBERT_TV_MODE=1 \
-    STREAMBERT_ZOOM=1.5
+    STREAMBERT_ZOOM=1.5 \
+    STREAMBERT_DRAG_SCROLL=1
 
 # Sidebar trimmed to what's useful for watching. Screen size is chosen per
 # browser by streambert-device.js (TVs/phones: 1080p, desktops: fill window).

@@ -72,7 +72,9 @@ connects last sets the size.
 
 ## Watching on your phone
 
-Turn the phone sideways (landscape) for the best view.
+Turn the phone sideways (landscape) for the best view; portrait mode shows the
+desktop as a thin strip. Swipe with one finger to scroll and tap to click
+(`STREAMBERT_DRAG_SCROLL=1`, on in this image).
 
 **From outside your home:** use [Tailscale](https://tailscale.com/). Install it
 on the server and on your phone and sign in to both with the same account,

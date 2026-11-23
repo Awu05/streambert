@@ -2243,6 +2243,18 @@ kbd {
     transform: translateY(-4px) scale(1.02);
     box-shadow: var(--red-glow);
 }
+/* Drag-to-scroll (touch via Docker): no text selection or image dragging */
+body.drag-scroll {
+    user-select: none;
+}
+body.drag-scroll img,
+body.drag-scroll a {
+    -webkit-user-drag: none;
+}
+body.drag-scroll input,
+body.drag-scroll textarea {
+    user-select: text;
+}
 /* TV remote mode: easier to spot from the couch */
 body.tv-remote .gamepad-focused {
     outline-width: 5px;
