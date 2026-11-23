@@ -63,6 +63,17 @@ ENV TITLE=Streambert \
     STREAMBERT_TV_MODE=1 \
     STREAMBERT_ZOOM=1.5
 
+# One fixed 1080p screen for TVs and phones (scaled to fit), and a sidebar
+# trimmed to what's useful for watching.
+ENV SELKIES_MANUAL_WIDTH=1920 \
+    SELKIES_MANUAL_HEIGHT=1080 \
+    SELKIES_MICROPHONE_ENABLED=false \
+    SELKIES_UI_SIDEBAR_SHOW_APPS=false \
+    SELKIES_UI_SIDEBAR_SHOW_FILES=false \
+    SELKIES_UI_SIDEBAR_SHOW_WEBCAM=false \
+    SELKIES_UI_SIDEBAR_SHOW_SHARING=false \
+    SELKIES_UI_SIDEBAR_SHOW_GAMING_MODE=false
+
 # Electron runtime libraries, ffmpeg (needed for downloads) and mpv (the app
 # plays downloaded files and "open in external player" streams through mpv;
 # its window shows up in the browser like the app itself).
