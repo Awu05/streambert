@@ -518,6 +518,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      zoomFactor: ENV_DEFAULTS.zoom,
       backgroundThrottling: true,
       spellcheck: false,
       // Caps the renderer's V8 heap + exposes gc() for manual GC hints after navigation

@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
-// Env-driven defaults ({ tvRemoteMode }), e.g. set by a Docker image
+// Env-driven defaults ({ tvRemoteMode, zoom }), set by the Docker image
 const envDefaults = ipcRenderer.sendSync("get-env-defaults");
 
 contextBridge.exposeInMainWorld("electron", {
@@ -184,7 +184,8 @@ contextBridge.exposeInMainWorld("electron", {
   offWindowMaximize: (h) => ipcRenderer.removeListener("window-maximized", h),
   getVideoDuration: (filePath) =>
     ipcRenderer.invoke("get-video-duration", filePath),
-  setZoomFactor: (factor) => webFrame.setZoomFactor(factor),
+  // Font-size zoom is relative to the env base zoom (1 on desktop)
+  setZoomFactor: (factor) => webFrame.setZoomFactor(factor * envDefaults.zoom),
   // Auto-updater
   detectUpdateFormat: () => ipcRenderer.invoke("detect-update-format"),
   downloadAndInstallUpdate: (args) =>

@@ -35,6 +35,7 @@ import UpdateModal from "./components/UpdateModal";
 import { useGamepadNav } from "./utils/useGamepadNav";
 import { useTvRemoteMode } from "./utils/tvRemoteMode";
 import { useKeyboardNav } from "./utils/useKeyboardNav";
+import { enableDragScroll } from "./utils/dragScroll";
 
 // Lazy-loaded pages: each chunk is only downloaded when the user first visits
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -756,6 +757,11 @@ export default function App() {
     window.electron?.setTvRemoteMode?.(tvRemote);
   }, [tvRemote]);
   useKeyboardNav({ enabled: tvRemote, onBack: navigateBack });
+  useEffect(
+    () =>
+      window.electron?.envDefaults?.dragScroll ? enableDragScroll() : undefined,
+    [],
+  );
   useEffect(() => {
     if (!gamepadEnabled) return;
     if (gamepadConnected && !gamepadToastedRef.current) {
