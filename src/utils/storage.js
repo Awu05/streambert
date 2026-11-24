@@ -104,6 +104,7 @@ export const STORAGE_KEYS = {
   DISCORD_RPC_SHOW_BUTTON: "discordRpcShowButton",
   // Controller / gamepad navigation
   GAMEPAD_ENABLED: "gamepadEnabled",
+  TV_REMOTE_MODE: "tvRemoteMode",
 };
 
 export const getApiKey = () => storage.get(STORAGE_KEYS.API_KEY);

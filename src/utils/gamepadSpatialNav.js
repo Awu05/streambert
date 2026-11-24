@@ -127,6 +127,11 @@ export function confirmGamepadFocus() {
   return true;
 }
 
+// True while a modal/overlay scopes navigation (see getScopeRoot).
+export function hasActiveOverlay() {
+  return getScopeRoot() !== document;
+}
+
 // Best-effort dismiss for the B button while a modal is open. Returns false
 // if there's nothing to dismiss, so the caller can fall back to page-back.
 export function dismissActiveOverlay() {

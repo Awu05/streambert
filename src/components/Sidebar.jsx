@@ -113,7 +113,12 @@ export default function Sidebar({
       </div>
 
       {canGoBack && (
-        <SideBtn onClick={onBack} icon={<BackIcon />} label="Back (Ctrl+Z)" />
+        <SideBtn
+          onClick={onBack}
+          icon={<BackIcon />}
+          label="Back (Ctrl+Z)"
+          navBack
+        />
       )}
 
       <SideBtn onClick={onSearch} icon={<SearchIcon />} label="Search  (⌘F)" />
@@ -242,11 +247,12 @@ export default function Sidebar({
   );
 }
 
-function SideBtn({ active, onClick, icon, label, badge }) {
+function SideBtn({ active, onClick, icon, label, badge, navBack }) {
   return (
     <button
       className={`sidebar-btn ${active ? "active" : ""}`}
       onClick={onClick}
+      data-nav-back={navBack ? "" : undefined}
       style={{ position: "relative" }}
     >
       {icon}

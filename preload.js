@@ -1,8 +1,23 @@
 const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
+// Env-driven defaults ({ tvRemoteMode }), e.g. set by a Docker image
+const envDefaults = ipcRenderer.sendSync("get-env-defaults");
+
 contextBridge.exposeInMainWorld("electron", {
   // Cleaned Chromium UA (no Electron/app tokens)
   cleanUserAgent: ipcRenderer.sendSync("get-clean-user-agent"),
+
+  envDefaults,
+
+  // TV remote mode: main handles remote keys inside player webviews
+  setTvRemoteMode: (on) => ipcRenderer.send("set-tv-remote-mode", !!on),
+  onPlayerRemoteBack: (cb) => {
+    const h = () => cb();
+    ipcRenderer.on("player-remote-back", h);
+    return h;
+  },
+  offPlayerRemoteBack: (h) =>
+    ipcRenderer.removeListener("player-remote-back", h),
 
   // m3u8 capture
   onM3u8Found: (cb) => {

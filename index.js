@@ -46,6 +46,10 @@ const subtitlesIpc = require("./src/ipc/subtitles");
 const hianimeIpc = require("./src/ipc/hianime");
 const playerIpc = require("./src/ipc/player");
 const discordRpc = require("./src/ipc/discordRpc");
+const { parseEnvDefaults } = require("./src/ipc/envDefaults");
+const remoteKeys = require("./src/ipc/remoteKeys");
+
+const ENV_DEFAULTS = parseEnvDefaults(process.env);
 
 // -- Ad/tracker block list -----------------------------------------------------
 const BLOCKED_HOSTS = [
@@ -297,6 +301,10 @@ function buildCleanUserAgent() {
 // via preload (window.electron.cleanUserAgent) for per-source player UAs.
 ipcMain.on("get-clean-user-agent", (event) => {
   event.returnValue = buildCleanUserAgent();
+});
+
+ipcMain.on("get-env-defaults", (event) => {
+  event.returnValue = ENV_DEFAULTS;
 });
 
 // -- Popup handling ------------------------------------------------------------
@@ -563,6 +571,8 @@ function createWindow() {
         wc.once("destroyed", () => playerWcIds.delete(wc.id));
         // Per-site CSS (e.g. show only the player on KinoHub)
         siteTweaks.attach(wc);
+        // TV remote mode keys (no-op unless the setting is on)
+        remoteKeys.attach(wc);
       }
     } catch {}
 
@@ -621,6 +631,7 @@ subtitlesIpc.register({
   saveDownloads: downloadsIpc.saveDownloads,
 });
 hianimeIpc.register();
+remoteKeys.register(getMainWindow);
 playerIpc.register(getMainWindow, {
   writeSecretMigration: storageIpc.writeSecretMigration,
 });

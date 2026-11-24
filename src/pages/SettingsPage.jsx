@@ -32,6 +32,11 @@ import {
 } from "../utils/homeLayout";
 import { collectBackupData, restoreBackupData } from "../utils/backup";
 import { formatBytes } from "../utils/storage";
+import {
+  isTvRemoteModeEnabled,
+  setTvRemoteModeEnabled,
+  tvRemoteModeToSave,
+} from "../utils/tvRemoteMode";
 
 // ── Custom Select ─────────────────────────────────────────────────────────────
 function SettingsSelect({ value, onChange, options, style }) {
@@ -1268,6 +1273,8 @@ function AppearanceSection() {
   const [gamepadEnabled, setGamepadEnabled] = useState(
     () => storage.get(STORAGE_KEYS.GAMEPAD_ENABLED) !== false,
   );
+  const [tvRemote, setTvRemote] = useState(isTvRemoteModeEnabled);
+  const tvRemoteSaved = useRef(tvRemote);
   const [accentInPlayer, setAccentInPlayer] = useState(
     () => storage.get(STORAGE_KEYS.ACCENT_IN_PLAYER) !== false,
   );
@@ -1326,6 +1333,11 @@ function AppearanceSection() {
     storage.set(STORAGE_KEYS.REDUCE_ANIMATIONS, noAnim ? 1 : 0);
     storage.set(STORAGE_KEYS.GAMEPAD_ENABLED, gamepadEnabled);
     window.dispatchEvent(new CustomEvent("streambert:gamepad-settings-changed"));
+    const tvRemoteChange = tvRemoteModeToSave(tvRemoteSaved.current, tvRemote);
+    if (tvRemoteChange !== undefined) {
+      setTvRemoteModeEnabled(tvRemoteChange);
+      tvRemoteSaved.current = tvRemoteChange;
+    }
     storage.set(STORAGE_KEYS.THEME, theme);
     if (theme === "custom") {
       storage.set(STORAGE_KEYS.CUSTOM_THEME_VARS, customVars);
@@ -1674,6 +1686,20 @@ function AppearanceSection() {
               Navigate menus with a D-pad/stick and use A/B to select and go
               back. In the player: A play/pause, D-pad seek/volume, LB/RB
               skip ±15s, Y fullscreen, B exit.
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Toggle value={tvRemote} onChange={setTvRemote} />
+          <div>
+            <div
+              style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}
+            >
+              TV remote / keyboard navigation
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+              Use arrow keys and Enter (TV remotes) to move around and control
+              playback: Enter play/pause, ←/→ seek, ↓ twice or Back to exit.
             </div>
           </div>
         </div>
