@@ -65,7 +65,7 @@ function isModalRoot(el) {
 
 function getScopeRoot() {
   const overlays = Array.from(
-    document.querySelectorAll('[class*="overlay"]'),
+    document.querySelectorAll('[class*="overlay"], [class*="backdrop"]'),
   ).filter((el) => isVisible(el) && isModalRoot(el));
   if (overlays.length === 0) return document;
   return overlays[overlays.length - 1];
