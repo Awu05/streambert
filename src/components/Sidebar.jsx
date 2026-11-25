@@ -1,3 +1,4 @@
+import { hasCapability, isWebBuild } from "../utils/capabilities";
 import { useState, useRef, useEffect } from "react";
 import { imgUrl } from "../utils/api";
 import { useSeasonalEvent } from "../components/seasonalEvents.jsx";
@@ -233,7 +234,7 @@ export default function Sidebar({
           icon={<SettingsIcon />}
           label="Settings"
         />
-        <button
+        {hasCapability("windowControls") && <button
           className="sidebar-btn"
           onClick={() => window.electron?.quitApp?.()}
           title="Quit App"
@@ -241,7 +242,12 @@ export default function Sidebar({
         >
           <QuitIcon />
           <span className="tooltip">Quit App</span>
-        </button>
+        </button>}
+        {isWebBuild() && <button className="sidebar-btn" title="Log out" aria-label="Log out"
+          onClick={async () => {
+            const result = await fetch("/api/logout", { method: "POST" });
+            if (result.ok) location.replace("/login");
+          }}><QuitIcon /><span className="tooltip">Log out</span></button>}
       </div>
     </div>
   );

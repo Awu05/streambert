@@ -2,6 +2,7 @@ node_modules/
 temp/
 download_config.ini
 dist/
+dist-web/
 *.zip
 *secret.txt
 

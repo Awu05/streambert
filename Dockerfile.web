@@ -1,0 +1,89 @@
+# syntax=docker/dockerfile:1
+# Build Streambert's browser server for linux/amd64 or linux/arm64.
+# See docker/web/README.md for setup.
+
+ARG VID_DL_VERSION=latest
+
+# ── Stage 1: build + package the Electron app ────────────────────────────────
+# Runs on the build host's native arch. The app has no native node modules, so
+# electron-builder can package the target-arch Electron without emulation.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS app
+ARG TARGETARCH
+WORKDIR /src
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+RUN set -eux; \
+    case "$TARGETARCH" in \
+      amd64) EB_ARCH=x64 ;; \
+      arm64) EB_ARCH=arm64 ;; \
+      *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    ELECTRON_DIST=1 npx vite build; \
+    npm run build:web; \
+    npx electron-builder --linux dir --${EB_ARCH} --publish never; \
+    mv dist/linux-*unpacked /out
+
+# ── Stage 2: build vid-dl (the downloader) for the target arch ───────────────
+# Upstream only publishes a Linux x64 binary, so build it from source with
+# PyInstaller. Uses the same --onedir layout the app expects (_internal/ + exe).
+FROM python:3.12-slim-bookworm AS viddl
+ARG VID_DL_VERSION
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends binutils curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+# The releases feed only changes when a release is published, so this keeps the
+# cached build until a new vid-dl comes out, then rebuilds it.
+ADD https://github.com/truelockmc/vid-dl-cli-only/releases.atom /tmp/vid-dl-releases.atom
+RUN tag="$VID_DL_VERSION"; \
+    if [ "$tag" = latest ]; then \
+      tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+              https://github.com/truelockmc/vid-dl-cli-only/releases/latest); \
+      tag=${tag##*/}; \
+    fi; \
+    [ -n "$tag" ] && [ "$tag" != latest ] || { echo "could not resolve vid-dl release" >&2; exit 1; }; \
+    echo "Building vid-dl $tag"; \
+    curl -fsSL "https://github.com/truelockmc/vid-dl-cli-only/archive/refs/tags/${tag}.tar.gz" \
+      | tar xz --strip-components=1 \
+ && pip install --no-cache-dir -r requirements.txt pyinstaller \
+ && python -m PyInstaller --noconfirm --onedir --clean --noupx \
+      --exclude-module pycryptodomex.selftest \
+      --exclude-module pycryptodomex.tests \
+      --name vid-dl cli.py \
+ && ./dist/vid-dl/vid-dl --help >/dev/null
+
+FROM debian:trixie-slim
+
+ENV HOME=/config \
+    STREAMBERT_SERVER=1 \
+    STREAMBERT_PORT=8080 \
+    STREAMBERT_HOST=0.0.0.0 \
+    STREAMBERT_DOWNLOAD_DIR=/config/Downloads \
+    STREAMBERT_ALLOWED_DIRS=/opt/vid-dl \
+    STREAMBERT_MAX_HIDDEN_PAGES=2 \
+    PUID=1000 PGID=1000 TZ=Etc/UTC
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl tini tzdata xvfb xauth ffmpeg fonts-liberation fonts-noto-core \
+      libasound2t64 libatk-bridge2.0-0t64 libatspi2.0-0t64 libdrm2 libgbm1 \
+      libgtk-3-0t64 libnotify4 libnss3 libsecret-1-0 libxkbcommon0 libxss1 \
+      libxtst6 libxshmfence1 util-linux passwd \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd -g 1000 streambert \
+ && useradd -u 1000 -g 1000 -d /config -M -s /usr/sbin/nologin streambert
+
+COPY --from=app /out /opt/streambert
+COPY --from=viddl /build/dist/vid-dl /opt/vid-dl
+COPY --chmod=755 docker/web/entrypoint.sh /usr/local/bin/streambert-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/streambert-entrypoint
+
+EXPOSE 8080
+VOLUME /config
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s CMD curl -fsS -o /dev/null "http://127.0.0.1:${STREAMBERT_PORT}/login" || exit 1
+# tini reaps Chromium's child processes and forwards stop signals, so the image
+# also runs correctly with a plain `docker run` (no --init needed).
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/streambert-entrypoint"]

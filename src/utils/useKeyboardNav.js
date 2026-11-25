@@ -27,6 +27,7 @@ export function useKeyboardNav({ enabled, onBack }) {
   useEffect(() => {
     if (!enabled) return;
     const handler = (e) => {
+      if (e.target?.closest?.("[data-web-player]")) return;
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target;
       const tag = (t?.tagName || "").toUpperCase();

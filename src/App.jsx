@@ -1,3 +1,4 @@
+import { hasCapability, isWebBuild } from "./utils/capabilities";
 import {
   useState,
   useEffect,
@@ -76,6 +77,22 @@ export default function App() {
   const [progress, setProgress] = useState(() => storage.get("progress") || {});
   const [history, setHistory] = useState(() => storage.get("history") || []);
   const [watched, setWatched] = useState(() => storage.get("watched") || {});
+  useEffect(() => {
+    if (!isWebBuild()) return;
+    const updates = {
+      saved: [setSaved, {}], savedOrder: [setSavedOrder, null], progress: [setProgress, {}],
+      history: [setHistory, []], watched: [setWatched, {}],
+    };
+    const refresh = ({ detail }) => {
+      for (const key of detail.keys) {
+        if (!Object.hasOwn(updates, key)) continue;
+        const [set, fallback] = updates[key];
+        set(storage.get(key) ?? fallback);
+      }
+    };
+    window.addEventListener("streambert:storage-changed", refresh);
+    return () => window.removeEventListener("streambert:storage-changed", refresh);
+  }, []);
   const [toast, setToast] = useState(null);
   const [updateBanner, setUpdateBanner] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -114,7 +131,7 @@ export default function App() {
 
   // ── Scheduled backup: run on startup if due ─────────────────────────────────
   useEffect(() => {
-    if (!window.electron?.onScheduledBackupRequested) return;
+    if (!hasCapability("scheduledBackup") || !window.electron?.onScheduledBackupRequested) return;
     const handler = window.electron.onScheduledBackupRequested(async () => {
       try {
         const settings = await window.electron.getScheduledBackupSettings();
@@ -144,7 +161,7 @@ export default function App() {
 
   // ── Startup update check ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!storage.get("autoCheckUpdates")) return;
+    if (!hasCapability("updater") || !storage.get("autoCheckUpdates")) return;
     const source =
       storage.get(STORAGE_KEYS.UPDATE_SOURCE) || DEFAULT_UPDATE_SOURCE;
     checkForUpdatesWithFallback(source)
@@ -816,7 +833,7 @@ export default function App() {
     (item) => {
       const mt = getMediaType(item);
       const id = `${mt}_${item.id}`;
-      const currentSaved = savedRef.current;
+      const currentSaved = isWebBuild() ? storage.get("saved") || {} : savedRef.current;
       const isRemoving = !!currentSaved[id];
       const next = { ...currentSaved };
 
@@ -897,6 +914,7 @@ export default function App() {
     // the progress object from when the interval was created, overwriting
     // saves from other episodes (classic stale closure bug).
     setProgress((prev) => {
+      if (isWebBuild()) prev = storage.get("progress") || {};
       if (prev[key] === pct) return prev; // no change - skip write
       const next = { ...prev, [key]: pct };
       storage.set("progress", next);
@@ -906,6 +924,7 @@ export default function App() {
 
   const markWatched = useCallback((key) => {
     setWatched((prev) => {
+      if (isWebBuild()) prev = storage.get("watched") || {};
       const next = { ...prev, [key]: true };
       storage.set("watched", next);
       return next;
@@ -914,6 +933,7 @@ export default function App() {
 
   const markUnwatched = useCallback((key) => {
     setWatched((prev) => {
+      if (isWebBuild()) prev = storage.get("watched") || {};
       const next = { ...prev };
       delete next[key];
       storage.set("watched", next);

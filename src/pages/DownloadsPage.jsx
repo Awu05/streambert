@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo, lazy, Suspense } from "react";
 import {
   DownloadIcon,
   TrashIcon,
@@ -11,6 +11,10 @@ import {
 import { storage, isElectron, STORAGE_KEYS } from "../utils/storage";
 import SubtitleDownloaderModal from "../components/SubtitleDownloaderModal";
 import { imgUrl } from "../utils/api";
+
+import { hasCapability, isWebBuild } from "../utils/capabilities";
+const DownloadedWebPlayer = import.meta.env.MODE === "web"
+  ? lazy(() => import("../components/DownloadedWebPlayer")) : null;
 
 const STATUS_CLASS = {
   downloading: "dl-status--downloading",
@@ -106,6 +110,7 @@ export default function DownloadsPage({
   );
   const highlightRef = useRef(null);
   const [subtitleModalDl, setSubtitleModalDl] = useState(null);
+  const [browserPlayback, setBrowserPlayback] = useState(null);
 
   // ── Toolbar state ─────────────────────────────────────────────
   const [showUntracked, setShowUntracked] = useState(
@@ -336,6 +341,9 @@ export default function DownloadsPage({
 
   return (
     <div className="fade-in dl-page">
+      {browserPlayback && <Suspense fallback={null}><DownloadedWebPlayer download={browserPlayback.dl}
+        progressKey={browserPlayback.watchedKey} saveProgress={onSaveProgress} markWatched={onMarkWatched}
+        onClose={() => setBrowserPlayback(null)} /></Suspense>}
       {subtitleModalDl && (
         <SubtitleDownloaderModal
           dl={subtitleModalDl}
@@ -522,7 +530,7 @@ export default function DownloadsPage({
             Local Files
           </div>
           <div className="dl-page__scan-controls">
-            {isElectron && (
+            {isElectron && hasCapability("folderPicker") && (
               <>
                 <input
                   className="dl-page__scan-input"
@@ -572,7 +580,9 @@ export default function DownloadsPage({
                   key={dl.id}
                   dl={dl}
                   fileExists={dl.isLocalOnly ? true : fileExistsCache[dl.id]}
-                  onWatch={(subtitlePaths) =>
+                  onWatch={isWebBuild()
+                    ? (dl.isLocalOnly ? null : () => setBrowserPlayback({ dl, watchedKey }))
+                    : (subtitlePaths) =>
                     subtitlePaths?.length > 0
                       ? window.electron.openPathAtTime(
                           dl.filePath,
@@ -582,9 +592,8 @@ export default function DownloadsPage({
                       : window.electron.openPath(dl.filePath)
                   }
                   onHistory={onHistory}
-                  onShowFolder={() =>
-                    window.electron?.showInFolder(dl.filePath)
-                  }
+                  onShowFolder={hasCapability("folderPicker")
+                    ? () => window.electron?.showInFolder(dl.filePath) : null}
                   onDelete={dl.isLocalOnly ? undefined : () => handleDelete(dl)}
                   isHighlighted={isHighlighted}
                   highlightRef={isHighlighted ? highlightRef : null}
@@ -617,7 +626,7 @@ export default function DownloadsPage({
                     dl.tmdbId ? () => setSubtitleModalDl(dl) : null
                   }
                   onOpenLog={
-                    dl.logPath && dl.status === "error"
+                    hasCapability("desktop") && dl.logPath && dl.status === "error"
                       ? () => window.electron.openPath(dl.logPath)
                       : null
                   }
@@ -765,7 +774,7 @@ const LocalFileCard = memo(function LocalFileCard({
   onOpenLog,
 }) {
   const isDownload = !dl.isLocalOnly;
-  const canWatch = !!fileExists && !!dl.filePath;
+  const canWatch = !!fileExists && !!dl.filePath && !!onWatch;
 
   const storageKey = watchedKey ? PROGRESS_TIME_PREFIX + watchedKey : null;
   const durKey = dl.id ? DURATION_PREFIX + dl.id : null;
@@ -914,7 +923,7 @@ const LocalFileCard = memo(function LocalFileCard({
         episode: dl.episode != null ? Number(dl.episode) : null,
       });
     }
-    if (savedSecs > 0 && window.electron?.openPathAtTime) {
+    if (!isWebBuild() && savedSecs > 0 && window.electron?.openPathAtTime) {
       window.electron.openPathAtTime(dl.filePath, savedSecs, dl.subtitlePaths);
     } else {
       onWatch(dl.subtitlePaths);
@@ -1312,7 +1321,7 @@ const LocalFileCard = memo(function LocalFileCard({
               <PlayIcon /> {savedSecs > 0 ? "Resume" : "Watch"}
             </button>
           )}
-          {dl.filePath && (
+          {dl.filePath && onShowFolder && (
             <button
               className="btn btn-ghost dl-btn--sm-icon"
               onClick={onShowFolder}

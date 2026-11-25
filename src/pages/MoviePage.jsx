@@ -1,5 +1,7 @@
 import {
   useState,
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -78,6 +80,10 @@ import { useTvRemoteMode } from "../utils/tvRemoteMode";
 import { PLAYER_BACK_EVENT } from "../utils/useKeyboardNav";
 import { dismissActiveOverlay } from "../utils/gamepadSpatialNav";
 import HiAnimeLoader from "../components/HiAnimeLoader";
+
+import { isWebBuild } from "../utils/capabilities";
+const BrowserMediaPlayer = import.meta.env.MODE === "web"
+  ? lazy(() => import("../components/BrowserMediaPlayer")) : null;
 
 export default function MoviePage({
   item,
@@ -376,7 +382,7 @@ export default function MoviePage({
 
   // Resolve HiAnime movie URL via main-process IPC (scraping, no CORS)
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || isWebBuild()) return;
     const epKey = `movie_${item.id}_${dubMode}`;
 
     // Auto-failover: if a previous attempt taught us HiAnime doesn't have
@@ -1000,7 +1006,15 @@ export default function MoviePage({
         </div>
       </div>
 
-      {playing && !restricted && !isUnreleased && (
+      {isWebBuild() && playing && !restricted && !isUnreleased && (
+        <Suspense fallback={null}><BrowserMediaPlayer key={progressKey} itemId={item.id} title={title} mediaType="movie"
+          anime={isAnime} dubMode={dubMode} accent={playerAccentColor} progressKey={progressKey}
+          saveProgress={saveProgress} markWatched={onMarkWatched} watchedThreshold={watchedThreshold}
+          onClose={() => setPlaying(false)} onResolved={setM3u8Url} onSubtitles={setInterceptedSubs}
+          onDubModeChange={(mode) => { setDubMode(mode); storage.set(STORAGE_KEYS.HIANIME_DUB_MODE, mode); }}
+          onDownload={() => movieDownload ? onGoToDownloads?.(movieDownload.id) : setShowDownload(true)} /></Suspense>
+      )}
+      {!isWebBuild() && playing && !restricted && !isUnreleased && (
         <div className="section">
           <div
             className={`player-wrap${playerFullscreen ? " player-wrap--fullscreen" : ""}`}

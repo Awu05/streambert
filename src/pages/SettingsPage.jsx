@@ -1,3 +1,4 @@
+import { hasCapability, isWebBuild } from "../utils/capabilities";
 import { useState, useEffect, useRef } from "react";
 import UpdateModal from "../components/UpdateModal";
 import {
@@ -1163,12 +1164,13 @@ function BackupRestoreSection({ onRestored }) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const backup = JSON.parse(ev.target.result);
         if (!backup?.data)
           throw new Error("Invalid backup file, missing data field.");
         restoreBackupData(backup.data);
+        await storage.flush();
         setRestoreStatus("✓ Backup restored: reloading…");
         setTimeout(() => window.location.reload(), 1200);
         onRestored?.();
@@ -1250,7 +1252,7 @@ function BackupRestoreSection({ onRestored }) {
           </span>
         )}
       </div>
-      <ScheduledBackupSection />
+      {hasCapability("scheduledBackup") && <ScheduledBackupSection />}
     </div>
   );
 }
@@ -2971,6 +2973,7 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
 
   return (
     <div
+      className="settings-topbar"
       style={{
         position: "sticky",
         top: 0,
@@ -3299,7 +3302,7 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
                 padding: 6,
               }}
             >
-              {SECTION_NAV.map((s) => (
+              {SECTION_NAV.filter((section) => hasCapability("discord") || section.id !== "discordRpc").map((s) => (
                 <button
                   key={s.id}
                   onMouseDown={() => scrollTo(s.id)}
@@ -3644,7 +3647,7 @@ export default function SettingsPage({
 
       <div
         ref={contentRef}
-        className="fade-in"
+        className="fade-in settings-content"
         style={{ padding: "40px 48px 80px" }}
       >
         {/* Page title */}
@@ -3672,7 +3675,7 @@ export default function SettingsPage({
           />
 
           {/* Version & Updates */}
-          <VersionSection />
+          {hasCapability("updater") && <VersionSection />}
 
           <Divider />
 
@@ -4257,6 +4260,7 @@ export default function SettingsPage({
 
           <div style={{ marginBottom: 40 }}>
             <div className="settings-section-title">Download Folder</div>
+            {isWebBuild() ? <p><code>{downloadPath}</code> is set by the server.</p> : <>
             <div
               style={{
                 fontSize: 13,
@@ -4303,6 +4307,7 @@ export default function SettingsPage({
                 set one.
               </div>
             )}
+            </>}
           </div>
         </div>
 
@@ -4320,13 +4325,13 @@ export default function SettingsPage({
         {/* ══════════════════════════════════════════════════════════════════ */}
         {/* GROUP: DISCORD RICH PRESENCE                                       */}
         {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secDiscordRpc} style={{ scrollMarginTop: 80 }}>
+        {hasCapability("discord") && <div ref={secDiscordRpc} style={{ scrollMarginTop: 80 }}>
           <SectionGroupHeader
             title="Discord Rich Presence"
             subtitle="Show what you're watching on your Discord profile"
           />
           <DiscordRpcSection />
-        </div>
+        </div>}
 
         {/* ══════════════════════════════════════════════════════════════════ */}
         {/* GROUP: INTERFACE                                                   */}
@@ -4382,6 +4387,7 @@ export default function SettingsPage({
               overflow: "hidden",
             }}
           >
+            {hasCapability("desktop") && <>
             {/* Install location */}
             <div style={{ padding: "22px 24px" }}>
               <CleanRow
@@ -4397,6 +4403,7 @@ export default function SettingsPage({
 
             <div style={{ height: 1, background: "var(--border)" }} />
 
+            </>}
             {/* Cache */}
             <div style={{ padding: "22px 24px" }}>
               <CleanRow
@@ -4447,8 +4454,7 @@ export default function SettingsPage({
 
             <div style={{ height: 1, background: "var(--border)" }} />
 
-            {/* Full Reset */}
-            <div
+            {hasCapability("desktop") && <div
               style={{
                 padding: "22px 24px",
                 background: "rgba(229,9,20,0.03)",
@@ -4525,7 +4531,7 @@ export default function SettingsPage({
                   </button>
                 </div>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       </div>

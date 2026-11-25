@@ -1,0 +1,19 @@
+services:
+  streambert-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: streambert-web:latest
+    shm_size: "1gb"
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      TZ: "${TZ:-Etc/UTC}"
+      STREAMBERT_PASSWORD: "${STREAMBERT_PASSWORD:?Set STREAMBERT_PASSWORD first}"
+      STREAMBERT_MAX_HIDDEN_PAGES: "${STREAMBERT_MAX_HIDDEN_PAGES:-2}"
+    volumes:
+      - ./config:/config
+      - ./downloads:/config/Downloads
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

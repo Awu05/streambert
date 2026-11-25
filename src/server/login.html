@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a0a0a">
+    <title>Sign in · Streambert</title>
+    <link rel="icon" href="/logo.svg">
+    <style>
+      /* FONT_FACES */
+      :root { --bg: #0a0a0a; --surface: #111111; --surface2: #1a1a1a; --border: #2a2a2a; --red: #e50914; --red2: #ff1a24; --text: #f0f0f0; --text2: #c0c0c0; --text3: #909090; --radius: 8px; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 1.5rem;
+        background: radial-gradient(ellipse at top, rgba(229, 9, 20, .12), transparent 60%), var(--bg);
+        color: var(--text); font: 15px "DM Sans", system-ui, sans-serif;
+      }
+      form { width: min(24rem, 100%); padding: 2.25rem 2rem 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+      .brand { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.75rem; }
+      .brand img { width: 44px; height: 44px; filter: drop-shadow(0 0 8px rgba(229, 9, 20, .5)); }
+      h1 { margin: 0; font: 400 2.25rem/1 "Bebas Neue", sans-serif; letter-spacing: .04em; }
+      label { display: block; color: var(--text2); font-size: 13px; font-weight: 500; }
+      input, button { display: block; width: 100%; margin-top: .5rem; padding: .8rem .9rem; border-radius: var(--radius); font: inherit; }
+      input { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+      input:focus { border-color: var(--text3); }
+      button { margin-top: 1.25rem; background: var(--red); color: #fff; border: 0; cursor: pointer; font-weight: 600; letter-spacing: .5px; transition: background .2s, box-shadow .2s; }
+      button:hover { background: var(--red2); box-shadow: 0 0 30px rgba(229, 9, 20, .3); }
+      button:disabled { opacity: .6; cursor: default; }
+      :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+      #error { min-height: 1.4em; margin: .9rem 0 0; color: #ff8a90; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <form>
+      <div class="brand"><img src="/logo.svg" alt=""><h1>Streambert</h1></div>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button type="submit">Sign in</button>
+      <p id="error" role="status"></p>
+    </form>
+    <script>
+      const form = document.querySelector("form");
+      const password = document.getElementById("password");
+      const message = document.getElementById("error");
+      const button = form.querySelector("button");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        button.disabled = true;
+        message.textContent = "";
+        try {
+          const response = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: password.value }),
+          });
+          if (response.ok) return location.replace("/");
+          message.textContent = response.status === 401 ? "Wrong password" : "Could not sign in";
+          password.select();
+        } catch {
+          message.textContent = "Could not reach Streambert";
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

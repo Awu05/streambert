@@ -1,3 +1,4 @@
+import { hasCapability, isWebBuild } from "../utils/capabilities";
 import { useState, useEffect, useCallback } from "react";
 import { CloseIcon, DownloadIcon, SettingsIcon, SubtitlesIcon } from "./Icons";
 import {
@@ -583,7 +584,7 @@ export default function DownloadModal({
       episode,
       posterPath: posterPath || null,
       tmdbId: tmdbId || mediaId || null,
-    });
+    }).catch((error) => ({ ok: false, error: error.message }));
 
     if (result.ok) {
       onDownloadStarted?.({
@@ -747,7 +748,7 @@ export default function DownloadModal({
               </div>
 
               {/* ── Open in external player ───────────────────────────────── */}
-              {isElectron && (
+              {isElectron && hasCapability("externalPlayer") && (
                 <div
                   style={{
                     padding: "12px 20px",
@@ -1119,6 +1120,7 @@ export default function DownloadModal({
                   <div className="download-instructions-title">
                     Set up Video Downloader
                   </div>
+                  {isWebBuild() ? <p>The server downloader is unavailable.</p> : <>
                   <ol className="download-steps">
                     <li>
                       Download the latest release from{" "}
@@ -1154,6 +1156,7 @@ export default function DownloadModal({
                       </span>
                     )}
                   </div>
+                  </>}
                   {checking && (
                     <div className="download-checking">
                       <div
@@ -1268,13 +1271,13 @@ export default function DownloadModal({
                     <span style={{ fontSize: 12, color: "var(--text3)" }}>
                       Save to: <code>{downloadPath}</code>
                     </span>
-                    <button
+                    {hasCapability("folderPicker") && <button
                       className="btn btn-ghost"
                       style={{ padding: "4px 10px", fontSize: 12 }}
                       onClick={() => setSettingPath(true)}
                     >
                       Change
-                    </button>
+                    </button>}
                   </div>
                 </div>
               )}

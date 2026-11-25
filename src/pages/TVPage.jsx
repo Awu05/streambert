@@ -1,5 +1,7 @@
 import {
   useState,
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -411,6 +413,10 @@ function getDaysUntilRelease(airDate) {
   return `${days} days left`;
 }
 
+import { isWebBuild } from "../utils/capabilities";
+const BrowserMediaPlayer = import.meta.env.MODE === "web"
+  ? lazy(() => import("../components/BrowserMediaPlayer")) : null;
+
 export default function TVPage({
   item,
   apiKey,
@@ -773,7 +779,7 @@ export default function TVPage({
 
   // Resolve HiAnime episode URL via main-process IPC (scraping, no CORS)
   useEffect(() => {
-    if (!playing || !selectedEp) return;
+    if (!playing || !selectedEp || isWebBuild()) return;
     const epNum = selectedEp.episode_number;
     const epKey = `tv_${item.id}_s${selectedSeason}_e${epNum}_${dubMode}`;
 
@@ -1895,7 +1901,24 @@ export default function TVPage({
             </div>
           </div>
 
-          {playing && selectedEp && (
+          {isWebBuild() && playing && selectedEp && !restricted && (
+            <Suspense fallback={null}><BrowserMediaPlayer key={`tv_${item.id}_s${selectedSeason}e${selectedEp.episode_number}`}
+              itemId={item.id} title={title} mediaType="tv" anime={isAnime}
+              season={selectedSeason} episode={selectedEp.episode_number} dubMode={dubMode} accent={playerAccentColor}
+              progressKey={`tv_${item.id}_s${selectedSeason}e${selectedEp.episode_number}`}
+              saveProgress={saveProgress} markWatched={onMarkWatched} watchedThreshold={watchedThreshold}
+              onClose={() => { resetAutoplay(); setPlaying(false); }} onResolved={setM3u8Url} onSubtitles={setInterceptedSubs}
+              onNext={nextEp ? playNow : undefined} onEnded={triggerAutoplay}
+              overlay={autoplayCountdown !== null && nextEp && (
+                <div className="web-player-next">
+                  Next episode{autoplayCountdown > 0 && ` in ${autoplayCountdown}s`}
+                  <button className="btn btn-primary" onClick={playNow}>Play now</button><button className="btn btn-ghost" onClick={cancelAutoplay}>Cancel</button>
+                </div>
+              )}
+              onDubModeChange={(mode) => { setDubMode(mode); storage.set(STORAGE_KEYS.HIANIME_DUB_MODE, mode); }}
+              onDownload={() => currentEpDownload ? onGoToDownloads?.(currentEpDownload.id) : setShowDownload(true)} /></Suspense>
+          )}
+          {!isWebBuild() && playing && selectedEp && (
             <div className="section">
               <div
                 style={{

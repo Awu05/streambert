@@ -18,6 +18,7 @@ const fs = require("fs");
 const dns = require("dns").promises;
 const netMod = require("net");
 const crypto = require("crypto");
+const { proxyStream, rewritePlaylist } = require("./streamProxy");
 
 const BASE_URL = "https://hianime.at";
 const USER_AGENT =
@@ -530,24 +531,6 @@ function jsonForScript(v) {
     .replace(new RegExp("[\\u2028\\u2029]", "g"), "");
 }
 
-function rewritePlaylist(text, playlistUrl) {
-  const abs = (u) => new URL(u, playlistUrl).href;
-  return text
-    .split(/\r?\n/)
-    .map((line) => {
-      const t = line.trim();
-      if (!t) return line;
-      if (t.startsWith("#")) {
-        return line.replace(
-          /URI="([^"]+)"/g,
-          (_, u) => `URI="${proxied(abs(u))}"`,
-        );
-      }
-      return proxied(abs(t));
-    })
-    .join("\n");
-}
-
 function buildPlayerHtml(videoUrl, startTime, subtitleUrl, nonce) {
   const track = subtitleUrl
     ? `<track kind="subtitles" src="${escapeHtmlAttr(proxied(subtitleUrl))}" srclang="en" label="Subtitles" default>`
@@ -578,124 +561,6 @@ function buildPlayerHtml(videoUrl, startTime, subtitleUrl, nonce) {
   }
 </script>
 </body></html>`;
-}
-
-async function proxyRequest(target, req, res, hops = 0) {
-  let targetUrl;
-  try {
-    targetUrl = await assertPublicUrl(target);
-  } catch {
-    res.writeHead(403);
-    res.end();
-    return;
-  }
-  const lib = targetUrl.protocol === "https:" ? https : http;
-  const headers = {
-    "User-Agent": USER_AGENT,
-    Referer: _currentVideoReferer,
-    Accept: "*/*",
-    "Accept-Encoding": "identity",
-  };
-  if (req.headers["range"]) headers["Range"] = req.headers["range"];
-
-  const proxyReq = lib.request(
-    {
-      hostname: targetUrl.hostname,
-      port: targetUrl.port || undefined,
-      path: targetUrl.pathname + targetUrl.search,
-      method: "GET",
-      headers,
-      agent: lib === https ? httpsAgent : httpAgent,
-    },
-    (proxyRes) => {
-      const status = proxyRes.statusCode || 502;
-      if (
-        status >= 300 &&
-        status < 400 &&
-        proxyRes.headers.location &&
-        hops < 8
-      ) {
-        proxyRes.resume();
-        proxyRequest(
-          new URL(proxyRes.headers.location, target).href,
-          req,
-          res,
-          hops + 1,
-        );
-        return;
-      }
-
-      const contentType = String(proxyRes.headers["content-type"] || "");
-      const isPlaylist =
-        /\.m3u8(\?|$)/i.test(targetUrl.pathname + targetUrl.search) ||
-        /mpegurl/i.test(contentType);
-
-      if (isPlaylist && status === 200) {
-        const chunks = [];
-        let size = 0;
-        proxyRes.on("data", (c) => {
-          size += c.length;
-          if (size > MAX_TEXT_BYTES) {
-            proxyReq.destroy();
-            return;
-          }
-          chunks.push(c);
-        });
-        proxyRes.on("end", () => {
-          if (size > MAX_TEXT_BYTES) {
-            res.writeHead(502);
-            res.end();
-            return;
-          }
-          const text = Buffer.concat(chunks).toString("utf8");
-          let out = text;
-          try {
-            if (text.trimStart().startsWith("#EXTM3U")) {
-              out = rewritePlaylist(text, target);
-            }
-          } catch {
-            res.writeHead(502);
-            res.end();
-            return;
-          }
-          res.writeHead(200, {
-            "Content-Type": "application/vnd.apple.mpegurl",
-            "Cache-Control": "no-store",
-            "X-Content-Type-Options": "nosniff",
-          });
-          res.end(out);
-        });
-        proxyRes.on("error", () => {
-          if (!res.headersSent) res.writeHead(502);
-          res.end();
-        });
-        return;
-      }
-
-      const passHeaders = {};
-      for (const h of [
-        "content-type",
-        "content-length",
-        "content-range",
-        "accept-ranges",
-        "last-modified",
-        "etag",
-      ]) {
-        if (proxyRes.headers[h]) passHeaders[h] = proxyRes.headers[h];
-      }
-      passHeaders["Cache-Control"] = "no-store";
-      passHeaders["X-Content-Type-Options"] = "nosniff";
-      res.writeHead(status, passHeaders);
-      proxyRes.pipe(res);
-    },
-  );
-  proxyReq.on("error", () => {
-    if (!res.headersSent) res.writeHead(502);
-    res.end();
-  });
-  proxyReq.setTimeout(20000, () => proxyReq.destroy());
-  res.on("close", () => proxyReq.destroy());
-  proxyReq.end();
 }
 
 let _hlsJs = null;
@@ -782,7 +647,12 @@ function getPlayerServer() {
           res.end();
           return;
         }
-        proxyRequest(target, req, res);
+        proxyStream(target, req, res, {
+          authorizeUrl: assertPublicUrl,
+          proxyUrl: proxied,
+          getHeaders: () => ({ "User-Agent": USER_AGENT, Referer: _currentVideoReferer }),
+          agents: { "http:": httpAgent, "https:": httpsAgent },
+        });
         return;
       }
 
@@ -1006,11 +876,12 @@ function register() {
 
 module.exports = {
   register,
+  USER_AGENT,
   // exported for tests
   _internal: {
     deobfuscateBlob,
     unwrapApiHtml,
-    rewritePlaylist,
+    rewritePlaylist: (text, url) => rewritePlaylist(text, url, proxied),
     normalizeTitle,
   },
 };

@@ -48,6 +48,17 @@ const playerIpc = require("./src/ipc/player");
 const discordRpc = require("./src/ipc/discordRpc");
 const { parseEnvDefaults } = require("./src/ipc/envDefaults");
 const remoteKeys = require("./src/ipc/remoteKeys");
+const { getStreamRequestMeta } = require("./src/ipc/streamRequestMeta");
+const { parseServerConfig } = require("./src/server/config");
+
+let serverConfig;
+try {
+  serverConfig = parseServerConfig(process.env, app.getPath("userData"));
+} catch (error) {
+  console.error(error.message);
+  app.exit(1);
+  return;
+}
 
 const ENV_DEFAULTS = parseEnvDefaults(process.env);
 
@@ -284,7 +295,8 @@ const BLOCKED_HOSTS = [
 
 // -- Module-level state --------------------------------------------------------
 let mainWindow = null;
-const getMainWindow = () => mainWindow;
+let serverMode;
+const getMainWindow = () => serverMode?.window || mainWindow;
 
 const playerWcIds = new Set();
 let sessionsConfigured = false;
@@ -295,6 +307,33 @@ function buildCleanUserAgent() {
     .replace(/\s?Electron\/\S+/i, "")
     .replace(/\s?streambert\/\S+/i, "")
     .trim();
+}
+
+if (serverConfig.enabled) {
+  const { createEventHub, createWindowStub } = require("./src/server/events");
+  const { captureIpc, makePathGuard } = require("./src/server/ipcRegistry");
+  const { createHiddenPageCapture } = require("./src/server/hiddenPage");
+  const { createServerRuntime } = require("./src/server/runtime");
+  const userData = app.getPath("userData");
+  const hub = createEventHub();
+  const capture = createHiddenPageCapture({
+    BrowserWindow, clickPlayDeep: remoteKeys.clickPlayDeep, buildCleanUserAgent,
+    extractSubtitleLang: subtitlesIpc.extractSubtitleLang,
+  });
+  const runtime = createServerRuntime({
+    config: serverConfig, userData, root: __dirname, hub, openPage: capture.openPage,
+    getDownloads: downloadsIpc.getDownloads, hiAnimeUserAgent: hianimeIpc.USER_AGENT,
+    bootstrap: () => ({
+      envDefaults: { ...ENV_DEFAULTS, zoom: 1, dragScroll: false },
+      cleanUserAgent: buildCleanUserAgent(),
+      appVersion: app.getVersion(),
+    }),
+  });
+  const registry = captureIpc(ipcMain, {
+    isPathAllowed: makePathGuard([serverConfig.downloadDir, userData, ...serverConfig.allowedDirs]),
+    prepare: runtime.prepare,
+  });
+  serverMode = { window: createWindowStub(hub), capture, runtime, registry };
 }
 
 // Single source of truth for the cleaned UA; the renderer reads it synchronously
@@ -314,6 +353,32 @@ ipcMain.on("get-env-defaults", (event) => {
 // hidden, stopped window instead (window.open succeeds, nothing is shown).
 // Add a host here if another player shows the same message.
 const POPUP_STUB_HOSTS = ["vidrift.net", "vidrift.in"];
+
+// Server mode filters every player-session request itself, so the
+// BLOCKED_HOSTS match patterns ("*://host/path*", host may be "*.domain") are
+// parsed once into lookups by host.
+const blockedExactHosts = new Map();
+const blockedDomains = new Map();
+for (const pattern of BLOCKED_HOSTS) {
+  const [, host, path] = /^\*:\/\/([^/]+)(\/.*)$/.exec(pattern);
+  const lookup = host.startsWith("*.") ? blockedDomains : blockedExactHosts;
+  const key = host.replace(/^\*\./, "");
+  if (!lookup.has(key)) lookup.set(key, []);
+  lookup.get(key).push(path.replace(/\*$/, ""));
+}
+
+function isBlockedUrl(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return false; }
+  const { hostname, pathname } = parsed;
+  const matches = (prefixes) => !!prefixes?.some((prefix) => pathname.startsWith(prefix));
+  if (matches(blockedExactHosts.get(hostname))) return true;
+  // "*.domain" also matches the domain itself, like Chromium's URL filters.
+  for (let host = hostname; host; host = host.slice(host.indexOf(".") + 1 || host.length)) {
+    if (matches(blockedDomains.get(host))) return true;
+  }
+  return false;
+}
 
 function urlMatchesHosts(url, hosts) {
   try {
@@ -399,7 +464,11 @@ function setupSession(playerSession, trailerSession) {
 
   playerSession.webRequest.onHeadersReceived(
     { urls: ["*://*/*"] },
-    stripHeaders,
+    (details, callback) => {
+      if (!serverMode) return stripHeaders(details, callback);
+      callback({});
+      serverMode.capture.onResponse(details);
+    },
   );
   trailerSession.webRequest.onHeadersReceived(
     { urls: ["*://*/*"] },
@@ -418,10 +487,22 @@ function setupSession(playerSession, trailerSession) {
     "*://*/*.vtt*",
     "*://*/*.vtt",
   ];
+  if (serverMode) {
+    playerSession.webRequest.onErrorOccurred({ urls: ["*://*/*"] }, serverMode.capture.onError);
+  }
   playerSession.webRequest.onBeforeRequest(
-    { urls: [...BLOCKED_HOSTS, ...MEDIA_URLS] },
+    { urls: serverMode ? ["*://*/*"] : [...BLOCKED_HOSTS, ...MEDIA_URLS] },
     (details, callback) => {
       const { url } = details;
+      if (serverMode) {
+        if (isBlockedUrl(url)) {
+          blockStats.recordBlockedRequest(url);
+          callback({ cancel: true });
+        } else {
+          void serverMode.capture.checkRequest(details).then((allowed) => callback({ cancel: !allowed }));
+        }
+        return;
+      }
       const isMedia = url.includes(".m3u8") || url.includes(".vtt");
       if (!isMedia) {
         blockStats.recordBlockedRequest(url);
@@ -467,33 +548,29 @@ function setupSession(playerSession, trailerSession) {
   // per URL, so live playlists that are re-requested every few seconds add
   // no latency or repeated work.
   playerSession.webRequest.onBeforeSendHeaders(
-    { urls: ["*://*/*.m3u8*", "*://*/*.m3u8"] },
+    { urls: serverMode ? ["*://*/*"] : ["*://*/*.m3u8*", "*://*/*.m3u8"] },
     (details, callback) => {
       callback({ requestHeaders: details.requestHeaders });
       try {
+        if (serverMode) return serverMode.capture.beforeSend(details);
         if (playerIpc.hasStreamMeta(details.url)) return;
-        const h = details.requestHeaders || {};
-        const get = (n) =>
-          h[Object.keys(h).find((k) => k.toLowerCase() === n) || ""] || "";
-        let pageUrl = "";
-        try {
-          pageUrl = details.frame?.url || details.webContents?.getURL() || "";
-        } catch {}
-        const pageOrigin = /^https?:/.test(pageUrl)
-          ? new URL(pageUrl).origin
-          : "";
-        const meta = {
-          referer: get("referer") || details.referrer || pageUrl,
-          origin: get("origin") || pageOrigin,
-          userAgent: get("user-agent"),
-        };
-        playerIpc.rememberStreamMeta(details.url, meta);
+        playerIpc.rememberStreamMeta(details.url, getStreamRequestMeta(details));
       } catch {}
     },
   );
 
   // YouTube consent cookie → suppress consent gate (trailer session only)
   setYoutubeConsentCookies(trailerSession);
+}
+
+async function startServerMode() {
+  storageIpc.applySecretMigrationIfNeeded();
+  downloadsIpc.loadDownloads();
+  blockStats.loadBlockStats();
+  setupSession(session.fromPartition("persist:player"), session.fromPartition("persist:trailer"));
+  sessionsConfigured = true;
+  await serverMode.runtime.start(serverMode.registry);
+  console.log(`Streambert server listening on http://${serverConfig.host}:${serverConfig.port}`);
 }
 
 function createWindow() {
@@ -824,13 +901,34 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     _bench("app ready");
-    createWindow();
+    if (serverMode) await startServerMode();
+    else createWindow();
+  }).catch((error) => {
+    console.error(error.message);
+    app.exit(1);
   });
-  app.on("window-all-closed", () => app.quit());
-  app.on("before-quit", () => discordRpc.shutdown());
+  app.on("window-all-closed", () => {
+    if (!serverMode) app.quit();
+  });
+  let quitting = false;
+  app.on("before-quit", (event) => {
+    discordRpc.shutdown();
+    if (!serverMode) return;
+    event.preventDefault();
+    if (quitting) return;
+    quitting = true;
+    serverMode.runtime.close().then(() => app.exit(0), (error) => {
+      console.error(error.message);
+      app.exit(1);
+    });
+  });
+  if (serverMode) {
+    process.once("SIGTERM", () => app.quit());
+    process.once("SIGINT", () => app.quit());
+  }
   app.on("activate", () => {
-    if (mainWindow === null) createWindow();
+    if (!serverMode && mainWindow === null) createWindow();
   });
 }

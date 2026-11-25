@@ -104,6 +104,17 @@ const runIn = (frame, script, userGesture = false) =>
 
 const lastDown = new WeakMap();
 
+async function clickPlayDeep(wc) {
+  let frame = wc.mainFrame;
+  for (let depth = 0; frame && depth < 8; depth++) {
+    const result = await runIn(frame, actionScript("clickCentre"), true);
+    if (!result || typeof result !== "object") return result === true;
+    const children = frame.frames || [];
+    frame = (result.src && children.find((child) => child.url === result.src)) || children[result.i];
+  }
+  return false;
+}
+
 async function run(wc, action, now = Date.now(), getMw = getMainWindow) {
   const frames = wc.mainFrame.framesInSubtree;
   if (action === "downPress") {
@@ -136,13 +147,7 @@ async function run(wc, action, now = Date.now(), getMw = getMainWindow) {
   // visible player is clicked. Done in-page because sendInputEvent clicks
   // don't reach cross-origin iframes.
   if (action === "playPause") {
-    let frame = wc.mainFrame;
-    for (let depth = 0; frame && depth < 8; depth++) {
-      const r = await runIn(frame, actionScript("clickCentre"), true);
-      if (!r || typeof r !== "object") return;
-      const kids = frame.frames || [];
-      frame = (r.src && kids.find((f) => f.url === r.src)) || kids[r.i];
-    }
+    await clickPlayDeep(wc);
   }
 }
 
@@ -183,6 +188,7 @@ module.exports = {
   run,
   register,
   attach,
+  clickPlayDeep,
   noteConsoleMessage,
   isEditableFocused,
 };

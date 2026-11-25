@@ -185,6 +185,12 @@ export function moveGamepadFocus(direction) {
     return;
   }
 
+  const best = pickInDirection(from, candidates, direction);
+  if (best) setGamepadFocus(best);
+}
+
+// The candidate nearest to `from` in the pressed direction, or null.
+export function pickInDirection(from, candidates, direction) {
   const fromRect = from.getBoundingClientRect();
   const fromCenter = {
     x: fromRect.left + fromRect.width / 2,
@@ -212,8 +218,7 @@ export function moveGamepadFocus(direction) {
       best = el;
     }
   }
-
-  if (best) setGamepadFocus(best);
+  return best;
 }
 
 export function ensureInitialFocus() {

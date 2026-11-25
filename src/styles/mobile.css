@@ -1,0 +1,110 @@
+/*
+ * Phone layout for the browser build (loaded by src/web/init.js only, so the
+ * desktop app is unchanged). Many pages use inline styles, which is why some
+ * rules need !important.
+ */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  :root {
+    --sidebar: 0px;
+    --mobile-nav: calc(58px + env(safe-area-inset-bottom));
+    --page-pad: 16px;
+  }
+
+  /* ── App shell: the sidebar becomes a bottom tab bar ─────────────────── */
+  .main {
+    margin-left: 0;
+    height: 100vh;
+    height: 100dvh;
+    padding-bottom: var(--mobile-nav);
+  }
+  .sidebar {
+    top: auto;
+    width: auto;
+    right: 0;
+    height: var(--mobile-nav);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-around;
+    gap: 0;
+    padding: 0 4px env(safe-area-inset-bottom);
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .sidebar-logo,
+  .sidebar-sep,
+  .sidebar-saved,
+  .saved-thumb-tooltip,
+  .sidebar-context-menu,
+  .sidebar-btn .tooltip,
+  .sidebar-bottom > .sidebar-btn:first-child {
+    display: none !important;
+  }
+  .sidebar-bottom { display: contents; }
+  .sidebar-btn { width: 48px; height: 44px; margin: 0 !important; }
+  .sidebar-btn svg { width: 22px; height: 22px; }
+  .sidebar-btn:hover:not(.active) { background: transparent; box-shadow: none; color: var(--text3); }
+  .toast { bottom: calc(var(--mobile-nav) + 12px) !important; }
+
+  /* ── Shared page spacing ─────────────────────────────────────────────── */
+  .section { padding: 12px var(--page-pad); }
+  .section-title { font-size: 24px; }
+  .carousel-section { padding: 10px var(--page-pad) 14px; }
+  .library-header { padding: 24px var(--page-pad) 0; }
+  .library-title { font-size: 38px; }
+  .dl-page { padding: 24px var(--page-pad) 40px; }
+  .dl-page__title { font-size: 38px; }
+  .empty-state { padding: 48px var(--page-pad); }
+  .empty-state h3 { font-size: 24px; }
+  .cards-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+  .btn { padding: 10px 16px; }
+
+  /* ── Home hero ───────────────────────────────────────────────────────── */
+  .hero { height: auto; min-height: 380px; display: flex; align-items: flex-end; }
+  .hero-content { position: relative; padding: 140px var(--page-pad) 20px; max-width: none; }
+  .hero-title { font-size: 40px; margin-bottom: 10px; }
+  .hero-meta { margin-bottom: 12px; }
+  .hero-overview { margin-bottom: 18px; }
+  .hero-actions { flex-wrap: wrap; }
+  .hero-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .hero-gradient {
+    background: linear-gradient(to top, var(--bg) 0%, color-mix(in srgb, var(--bg) 85%, transparent) 45%, transparent 100%);
+  }
+
+  /* ── Home carousels: scale the coverflow so neighbours peek in ───────── */
+  .carousel-wrapper { height: 250px; }
+  .carousel-track { transform: scale(0.8); }
+  .carousel-btn { display: none; }
+
+  /* ── Movie / series pages ────────────────────────────────────────────── */
+  .detail-hero { min-height: 0; }
+  .detail-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 72px var(--page-pad) 20px;
+  }
+  .detail-poster { width: 120px; }
+  .detail-info { width: 100%; }
+  .detail-title { font-size: 40px; margin-bottom: 12px; overflow-wrap: anywhere; }
+  .detail-meta { gap: 10px 14px; margin-bottom: 14px; }
+  .detail-overview { margin-bottom: 18px; }
+  .detail-actions { gap: 8px; }
+  .detail-actions .btn { flex: 1 1 calc(50% - 4px); justify-content: center; padding: 11px 12px; }
+  .episodes-grid { grid-template-columns: 1fr; }
+  .episode-card { padding: 10px; }
+  .episode-thumb { width: 104px; }
+  .episode-info { min-width: 0; }
+
+  /* ── Settings (inline-styled) ────────────────────────────────────────── */
+  .settings-topbar { padding: 0 var(--page-pad) !important; }
+  .settings-topbar > div { flex-wrap: wrap; }
+  .settings-content { padding: 20px var(--page-pad) 40px !important; }
+  .settings-content [style*="display: flex"] { flex-wrap: wrap; }
+  .settings-content input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .settings-content select,
+  .settings-content textarea { max-width: 100%; min-width: 0; }
+  .settings-content code { white-space: normal; overflow-wrap: anywhere; }
+  .settings-content [style*="padding: 22px 24px"] { padding: 16px !important; }
+}
