@@ -9,3 +9,6 @@ dist-web/
 # docker compose data
 config/
 downloads/
+
+# Docker settings with passwords (copy .env.example)
+.env

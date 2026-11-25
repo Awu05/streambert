@@ -2,7 +2,7 @@
 set -eu
 
 if [ -z "${STREAMBERT_PASSWORD:-}" ]; then
-    echo "STREAMBERT_PASSWORD must be set (see docker-compose.web.yml)" >&2
+    echo "STREAMBERT_PASSWORD must be set (see .env.example)" >&2
     exit 1
 fi
 
@@ -18,6 +18,7 @@ for directory in /config /config/Downloads; do
     fi
 done
 
+# Chromium's headless platform: the hidden player pages need no X server.
 exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups \
-    xvfb-run -a -s "-screen 0 1280x720x24 -nolisten tcp" \
-    /opt/streambert/streambert --no-sandbox --password-store=basic --disable-gpu "$@"
+    /opt/streambert/streambert --no-sandbox --password-store=basic --disable-gpu \
+    --ozone-platform=headless "$@"

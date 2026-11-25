@@ -1,139 +1,75 @@
 # Streambert in Docker
 
-Runs the Streambert desktop app inside a container. You use it from any browser.
-The container is built on [linuxserver's Selkies base image](https://github.com/linuxserver/docker-baseimage-selkies),
-which streams the app's window, including audio, to the browser.
+The image runs Streambert as a web app on port 8080. Sign in from a PC, phone, or TV browser. Devices share one library, watch history, and download queue, and can play different videos at the same time.
 
-Everything works the same as the desktop app: the embedded players, ad blocking,
-stream capture, downloads (`vid-dl` and `ffmpeg` are included) and subtitles.
+Images are built for `linux/amd64` and `linux/arm64`.
 
-Images are built for both `linux/amd64` and `linux/arm64`.
+## Start
 
-> Only one person can use it at a time. Everyone who opens the page sees and
-> controls the same window.
+From the repository root, copy the example settings and set a password:
 
-## Quick start
-
-```bash
+```sh
+cp .env.example .env
+# edit .env and set STREAMBERT_PASSWORD
 docker compose up -d --build
 ```
 
-1. Open `https://<server-ip>:3001` and accept the self-signed certificate.
-2. Log in with `CUSTOM_USER` / `PASSWORD` from `docker-compose.yml`. Change these first.
-3. Enter your TMDB key, as on first launch of the desktop app.
-4. To set up downloads:
-   - In **Settings → Downloads → Download Folder**, choose `/config/Downloads`.
-     This maps to `./downloads` on the host.
-   - The first time you click **Download**, the dialog asks where the
-     downloader is. Choose `/opt/vid-dl`.
+Open `http://<server-ip>:8080`, sign in, and enter your TMDB read access token if prompted. For access away from home, use Tailscale or a reverse proxy with HTTPS. Keep port 8080 off the public internet.
 
-Settings, the library and watch history are stored in `./config` and survive
-rebuilds and image updates.
+Docker Compose reads `.env` automatically. It is ignored by git, so the password stays on your machine.
 
-## Watching on a TV
+## Settings
 
-Tested with [TV Bro](https://github.com/truefedex/tv-bro) on an NVIDIA Shield,
-controlled with the Shield remote.
+Set these in `.env`, then run `docker compose up -d` to apply them.
 
-1. Open `https://<server-ip>:3001` in TV Bro and log in.
-2. Switch TV Bro to **direct navigation mode**: long-press OK and pick it from
-   the menu. Without it, TV Bro turns the arrows into a mouse pointer and
-   Streambert never sees them. You may need to do this each time you open
-   the page.
-3. The container starts with **TV remote mode** on: a red ring shows what's
-   selected, and the UI is 1.5× larger so it's readable from the couch. You
-   can turn the mode off in **Settings → Appearance → TV remote / keyboard
-   navigation**.
-
-TV Bro only passes the arrows and OK to the page. The remote's Back button
-opens TV Bro's toolbar instead, so Streambert uses these:
-
-| Remote button | In the app | In a video |
+| Setting | Default | Use |
 | --- | --- | --- |
-| Arrows | Move the red ring. ← from the page jumps to the **‹ back** arrow at the top of the sidebar | ←/→ seek 10 s |
-| OK | Open / press | Play / pause (also starts players that show a poster) |
-| ↓ twice | — | Leave fullscreen, else leave the player |
+| `STREAMBERT_PASSWORD` | Required | Shared login password. Changing it signs every device out. |
+| `STREAMBERT_WEB_PORT` | `8080` | Port on the host. |
+| `STREAMBERT_MAX_HIDDEN_PAGES` | `2` | Provider pages used at once to find streams. New requests wait when all are in use. Resolved streams play independently of the limit. |
+| `STREAMBERT_TV_MODE` | `0` | `1` starts with TV remote navigation on. Each device can still turn it off in Settings. |
+| `STREAMBERT_LOW_RAM` | `1` | Limits memory use, including at most 3 Chromium renderer processes. Set `0` when `STREAMBERT_MAX_HIDDEN_PAGES` is above 2. |
+| `PUID` and `PGID` | `1000` | User and group that own `./config` and `./downloads`. |
+| `TZ` | `Etc/UTC` | Server time zone. |
 
-Volume uses the remote's own volume buttons. Downloaded files play in mpv with
-the same buttons. With a keyboard, Esc / Backspace also work as Back.
+| Folder on the host | In the container | Contents |
+| --- | --- | --- |
+| `./config` | `/config` | Server profile, library, watch history, credentials, and application data. |
+| `./downloads` | `/config/Downloads` | Downloads. The download folder is set by the server; the bundled downloader is at `/opt/vid-dl`. |
 
-## Screen size
+## Playback
 
-Each browser picks its screen size the first time it connects:
+The browser sources are VidFast and Aether for movies and TV, VidNest for TV, and HiAnime for anime. In the player, **Options → Source** shows which sources work for the current title.
 
-- **Computers** get a screen that matches the browser window, so it fills any
-  window or monitor, including ultrawide ones.
-- **TVs and phones** (narrow or touch screens) get a fixed 1920×1080 screen,
-  scaled to fit.
+- **Phones:** the app switches to a phone layout with a bottom tab bar. iPhones need iOS 17.1 or later for the best playback. If the browser blocks autoplay with sound, the video starts muted with a **Tap to unmute** button.
+- **Subtitles:** HiAnime subtitles and the subtitles of downloads start on. Change them in **Options → Subtitles**, or search for more in **Options → Find subtitles** (needs a Wyzie key in Settings).
+- **TVs:** turn on TV remote mode (or set `STREAMBERT_TV_MODE=1`). In the player, OK plays and pauses, Left and Right skip 10 seconds, Up moves to the player controls, and Back steps out of the controls, then closes the player.
+- **Other apps:** **Options → Open in another app** launches VLC, Infuse, or the Android app chooser, or copies a link. Links expire after six hours, and progress isn't tracked there. [Infuse links](https://support.firecore.com/hc/en-us/articles/215090997-API-for-Third-Party-Apps-Services) · [Android browser intents](https://developer.chrome.com/docs/android/intents)
+- **Downloads:** downloaded files play in the browser from the Downloads page. Files the downloader saved as MPEG-TS are repackaged to MP4 (no re-encoding) the first time they're played, which takes a few seconds.
 
-Change it later in the Selkies sidebar's screen settings; each browser
-remembers its own choice. There is still one shared session: the device that
-connects last sets the size.
+## Coming from the remote-desktop image
 
-## Watching on your phone
+Earlier versions of this image streamed the desktop app with Selkies on port 3001. To move over, open **Settings → Backup & Restore** in the old image and export your data. Stop the old container, start this one with the same `./config` and `./downloads` folders, and import the backup in the browser. The folders carry over saved credentials and the download registry. The backup carries library and watch history.
 
-Turn the phone sideways (landscape) for the best view; portrait mode shows the
-desktop as a thin strip. Swipe with one finger to scroll and tap to click
-(`STREAMBERT_DRAG_SCROLL=1`, on in this image).
+## Building
 
-**From outside your home:** use [Tailscale](https://tailscale.com/). Install it
-on the server and on your phone and sign in to both with the same account,
-then open `https://<server's tailscale name>:3001` on the phone. No router
-ports need to be opened, and nothing is exposed to the internet. A reverse
-proxy with a real certificate also works, but keep the password set.
+To build for the machine you're on, `docker compose up -d --build` is enough. To build both architectures and push them to a registry:
 
-**Tips:**
-
-- In the Selkies sidebar (the small handle on the left edge), switch the touch
-  mode to direct touch, so a tap clicks where you tap.
-- On mobile data, lower **Frames per second** to 30 and raise **CRF** in the
-  sidebar's video settings. Each browser keeps its own settings, so your TV
-  keeps full quality.
-- There is only one session. Opening Streambert on the phone takes over the
-  screen the TV is showing.
-
-## Building multi-arch images
-
-Build for both architectures and push to a registry:
-
-```bash
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t <registry>/streambert:latest --push .
+```sh
+docker buildx build --platform linux/amd64,linux/arm64 -t <registry>/streambert:latest --push .
 ```
 
-To build only for the machine you're on:
+The Electron app is packaged on the build machine's own architecture, so that step is fast. `vid-dl` is built from source for the target architecture; on a cross-build that step runs under QEMU and takes a few extra minutes. It's built from its latest release, and a rebuild reuses the cached copy until a new release comes out. To pin a version, pass `--build-arg VID_DL_VERSION=v.2.3.3`.
 
-```bash
-docker build -t streambert:latest .
-```
+The runtime image holds only what the server needs: the Electron app (run with Chromium's headless platform, so there is no X server), the libraries it links against, `vid-dl`, and `ffmpeg`.
 
-The Electron app is packaged on the build machine's own architecture, so that
-step is fast. `vid-dl` is built from source for the target architecture. On a
-cross-build this step runs under QEMU and takes a few extra minutes.
+## Raspberry Pi
 
-`vid-dl` is built from its latest release. A rebuild reuses the cached copy
-until a new release comes out. To pin a version, pass
-`--build-arg VID_DL_VERSION=v.2.3.3`.
+A Raspberry Pi 4 or 5 with a 64-bit OS and at least 4 GB of RAM is recommended. Keep the default two resolver slots.
+
+An ARM64 smoke test on Docker Desktop under QEMU (with an earlier build that still used Xvfb, and `--no-zygote` passed as a container argument) passed login, shared progress, HiAnime playback and seeking, and playback of a generated MP4. VidFast and Aether stream discovery timed out under emulation. Native Raspberry Pi hardware remains untested. [QEMU Chromium startup discussion](https://lists.nongnu.org/archive/html/qemu-devel/2021-04/msg05450.html)
 
 ## Notes
 
-- **Updates:** the app's built-in updater doesn't work in the container. To
-  update, pull or rebuild the image. Your data in `/config` is kept.
-- **HTTPS:** use port 3001. If you put it behind a reverse proxy, see the
-  [Selkies reverse proxy docs](https://docs.linuxserver.io/selkies/user-guide/reverse-proxy/).
-- **GPU:** uncomment the `/dev/dri` device in `docker-compose.yml` for an Intel
-  or AMD GPU. This lowers CPU use for video encoding.
-- **Playing downloads:** the app plays downloaded files in mpv, which is
-  included. The mpv window opens fullscreen in the same browser tab, with the
-  [uosc](https://github.com/tomasklaen/uosc) controls in Streambert's red.
-  Click the video to pause, right-click for the menu (subtitles, audio,
-  speed), and press `Esc` (or `q`) to close it and go back to Streambert. "Open in
-  external player" for streams uses mpv too. The player is configured in
-  [docker/root/etc/mpv/](root/etc/mpv/).
-- **Window border:** `NO_DECOR=true` hides the window manager border, because the
-  app draws its own title bar. Press `Ctrl+Shift+D` to toggle it.
-- **Extra Electron flags:** set `STREAMBERT_EXTRA_FLAGS`, for example
-  `STREAMBERT_EXTRA_FLAGS=--disable-gpu`.
-- **Autostart:** `/defaults/autostart` is copied into `/config` on first run
-  only. If you change it, delete `./config/.config/openbox/autostart` so the
-  new version is copied.
+- **Updates:** the app's built-in updater doesn't run in the container. Rebuild the image to update; your data in `./config` is kept.
+- **Health check:** the container reports healthy once the sign-in page answers.

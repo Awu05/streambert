@@ -1,13 +1,7 @@
 # syntax=docker/dockerfile:1
-#
-# Streambert in a browser-accessible desktop container (linuxserver Selkies).
-# Multi-arch: linux/amd64 and linux/arm64.
-#
-#   docker buildx build --platform linux/amd64,linux/arm64 -t streambert:latest .
-#
-# See docker/README.md for running instructions.
+# Streambert browser app: the Electron app runs as a web server (no remote
+# desktop) for linux/amd64 or linux/arm64. See docker/README.md for setup.
 
-# vid-dl release to build: "latest" (default) or a tag such as v.2.3.3
 ARG VID_DL_VERSION=latest
 
 # ── Stage 1: build + package the Electron app ────────────────────────────────
@@ -28,6 +22,7 @@ RUN set -eux; \
       *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     ELECTRON_DIST=1 npx vite build; \
+    npm run build:web; \
     npx electron-builder --linux dir --${EB_ARCH} --publish never; \
     mv dist/linux-*unpacked /out
 
@@ -60,74 +55,39 @@ RUN tag="$VID_DL_VERSION"; \
       --name vid-dl cli.py \
  && ./dist/vid-dl/vid-dl --help >/dev/null
 
-# ── Stage 3: uosc (modern mpv player UI) ─────────────────────────────────────
-# Pure Lua + fonts, so it is fetched once on the build host for every arch.
-FROM --platform=$BUILDPLATFORM alpine:3.22 AS uosc
-ARG UOSC_VERSION=5.13.0
-ADD https://github.com/tomasklaen/uosc/releases/download/${UOSC_VERSION}/uosc.zip /tmp/uosc.zip
-RUN mkdir /uosc && unzip -q /tmp/uosc.zip -d /uosc
 
-# ── Stage 4: runtime ─────────────────────────────────────────────────────────
-FROM ghcr.io/linuxserver/baseimage-selkies:debiantrixie
+# ── Stage 3: runtime ─────────────────────────────────────────────────────────
+# Electron runs with Chromium's headless platform, so no X server is needed.
+# Only the libraries Electron links against are installed, plus ffmpeg for the
+# downloader and for repackaging downloads that browsers can't play.
+FROM debian:trixie-slim
 
-ENV TITLE=Streambert \
-    NO_DECOR=true \
-    STREAMBERT_TV_MODE=1 \
-    STREAMBERT_ZOOM=1.5 \
-    STREAMBERT_DRAG_SCROLL=1
+ENV HOME=/config \
+    STREAMBERT_SERVER=1 \
+    STREAMBERT_PORT=8080 \
+    STREAMBERT_HOST=0.0.0.0 \
+    STREAMBERT_DOWNLOAD_DIR=/config/Downloads \
+    STREAMBERT_ALLOWED_DIRS=/opt/vid-dl \
+    STREAMBERT_MAX_HIDDEN_PAGES=2 \
+    PUID=1000 PGID=1000 TZ=Etc/UTC
 
-# Sidebar trimmed to what's useful for watching. Screen size is chosen per
-# browser by streambert-device.js (TVs/phones: 1080p, desktops: fill window).
-ENV SELKIES_MICROPHONE_ENABLED=false \
-    SELKIES_UI_SIDEBAR_SHOW_APPS=false \
-    SELKIES_UI_SIDEBAR_SHOW_FILES=false \
-    SELKIES_UI_SIDEBAR_SHOW_WEBCAM=false \
-    SELKIES_UI_SIDEBAR_SHOW_SHARING=false \
-    SELKIES_UI_SIDEBAR_SHOW_GAMING_MODE=false
-
-# Electron runtime libraries, ffmpeg (needed for downloads) and mpv (the app
-# plays downloaded files and "open in external player" streams through mpv;
-# its window shows up in the browser like the app itself).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      ffmpeg \
-      mpv \
-      libasound2t64 \
-      libatk-bridge2.0-0t64 \
-      libatspi2.0-0t64 \
-      libdrm2 \
-      libgbm1 \
-      libgtk-3-0t64 \
-      libnotify4 \
-      libnss3 \
-      libsecret-1-0 \
-      libxkbcommon0 \
-      libxss1 \
-      libxtst6 \
-      xdg-utils \
- && apt-get autoclean \
- && rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/*
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl tini tzdata util-linux passwd ffmpeg fonts-liberation \
+      libasound2t64 libatk-bridge2.0-0t64 libgbm1 libgtk-3-0t64 libnss3 libxkbcommon0 \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd -g 1000 streambert \
+ && useradd -u 1000 -g 1000 -d /config -M -s /usr/sbin/nologin streambert
 
 COPY --from=app /out /opt/streambert
 COPY --from=viddl /build/dist/vid-dl /opt/vid-dl
-COPY --from=uosc /uosc/scripts/ /etc/mpv/scripts/
-COPY --from=uosc /uosc/fonts/ /etc/mpv/fonts/
-COPY --from=uosc /uosc/fonts/ /usr/share/fonts/truetype/uosc/
-COPY docker/root/ /
-COPY public/sized/256x256.png /usr/share/selkies/www/icon.png
+COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/streambert-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/streambert-entrypoint \
+ && ! ldd /opt/streambert/streambert | grep "not found"
 
-# Strip any CRLF from Windows checkouts, then make the scripts executable.
-# Make mpv the default app for video files (used when the app hands a file to
-# the system via xdg-open).
-# Load streambert-device.js in the Selkies page.
-RUN sed -i 's/\r$//' /usr/local/bin/streambert-launch /defaults/autostart /etc/mpv/mpv.conf /etc/mpv/script-opts/uosc.conf /etc/mpv/input.conf /etc/mpv/scripts/double-down-exit.lua /usr/share/selkies/selkies-dashboard/streambert-device.js \
- && chmod +x /usr/local/bin/streambert-launch /defaults/autostart \
- && { grep -q streambert-device.js /usr/share/selkies/selkies-dashboard/index.html \
-      || sed -i 's#</head>#<script src="streambert-device.js"></script></head>#' /usr/share/selkies/selkies-dashboard/index.html; } \
- && grep -q streambert-device.js /usr/share/selkies/selkies-dashboard/index.html \
- && for t in video/mp4 video/x-matroska video/webm video/x-msvideo video/quicktime video/mp2t; do \
-      echo "$t=mpv.desktop"; done \
-      | sed '1i [Default Applications]' > /etc/xdg/mimeapps.list
-
-EXPOSE 3001
+EXPOSE 8080
 VOLUME /config
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s CMD curl -fsS -o /dev/null "http://127.0.0.1:${STREAMBERT_PORT}/login" || exit 1
+# tini reaps Chromium's child processes and forwards stop signals, so the image
+# also runs correctly with a plain `docker run` (no --init needed).
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/streambert-entrypoint"]

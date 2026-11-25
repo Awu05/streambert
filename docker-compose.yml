@@ -1,3 +1,5 @@
+# Streambert: open http://<server>:8080 in a browser and sign in.
+# Settings come from .env (copy .env.example). See docker/README.md.
 services:
   streambert:
     build: .
@@ -5,18 +7,16 @@ services:
     container_name: streambert
     shm_size: "1gb"          # required for Electron/Chromium
     environment:
-      - PUID=1000            # match your host user (id -u)
-      - PGID=1000            # match your host group (id -g)
-      - TZ=Etc/UTC
-      - CUSTOM_USER=streambert
-      - PASSWORD=change-me   # HTTP basic auth for the web UI
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      TZ: "${TZ:-Etc/UTC}"
+      STREAMBERT_PASSWORD: "${STREAMBERT_PASSWORD:?Set STREAMBERT_PASSWORD in .env (see .env.example)}"
+      STREAMBERT_MAX_HIDDEN_PAGES: "${STREAMBERT_MAX_HIDDEN_PAGES:-2}"
+      STREAMBERT_TV_MODE: "${STREAMBERT_TV_MODE:-0}"
+      STREAMBERT_LOW_RAM: "${STREAMBERT_LOW_RAM:-1}"
     volumes:
-      - ./config:/config     # app settings, library, watch history
+      - ./config:/config     # server profile, library, watch history, credentials
       - ./downloads:/config/Downloads
     ports:
-      - "3001:3001"          # https://<server>:3001
-      - "127.0.0.1:3000:3000" # http://localhost:3000 (this machine only)
-    # Optional: GPU for hardware video encoding/decoding (Intel/AMD)
-    # devices:
-    #   - /dev/dri:/dev/dri
+      - "${STREAMBERT_WEB_PORT:-8080}:8080"
     restart: unless-stopped
