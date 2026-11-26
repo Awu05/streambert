@@ -69,6 +69,14 @@ function streamLink(origin, entry, auth) {
   return origin + signedStreamPath(entry, auth);
 }
 
+function streamHeaders({ origin, referer, userAgent } = {}) {
+  return {
+    ...(origin ? { Origin: origin } : {}),
+    ...(referer ? { Referer: referer } : {}),
+    ...(userAgent ? { "User-Agent": userAgent } : {}),
+  };
+}
+
 function createStreamHandler({ streams, auth, authorizeUrl }) {
   return function handleStream(req, res, { url, signedIn }) {
     if (!url.pathname.startsWith("/s/")) return false;
@@ -99,16 +107,9 @@ function createStreamHandler({ streams, auth, authorizeUrl }) {
       authorizeUrl,
       proxyUrl,
       playlist: url.pathname.endsWith(".m3u8"),
-      getHeaders: () => {
-        const { origin, referer, userAgent } = entry.headers;
-        return {
-          ...(origin ? { Origin: origin } : {}),
-          ...(referer ? { Referer: referer } : {}),
-          ...(userAgent ? { "User-Agent": userAgent } : {}),
-        };
-      },
+      getHeaders: () => streamHeaders(entry.headers),
     }).then(() => true);
   };
 }
 
-module.exports = { createStreamRegistry, createStreamHandler, signedStreamPath, streamLink };
+module.exports = { createStreamRegistry, createStreamHandler, signedStreamPath, streamLink, streamHeaders };
