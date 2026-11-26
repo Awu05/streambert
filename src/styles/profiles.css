@@ -42,6 +42,9 @@
 .profile-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
 .profile-picker .profile-actions { justify-content: center; }
 .profile-dialog {
+  /* The global reset zeroes margins; auto margins centre a modal <dialog>. */
+  margin: auto;
+  overflow: auto;
   box-sizing: border-box;
   width: min(540px, calc(100% - 28px));
   max-height: calc(100dvh - 28px);
