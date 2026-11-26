@@ -3,6 +3,7 @@
 // Used by manual export/import (SettingsPage) and scheduled backups (App.jsx).
 
 import { storage } from "./storage";
+import { restorableKeys } from "./profile";
 
 // All localStorage keys (without prefix) that are included in backups
 export const BACKUP_KEYS = [
@@ -75,7 +76,7 @@ export function collectBackupData() {
  */
 export function restoreBackupData(data) {
   if (!data || typeof data !== "object") throw new Error("Invalid backup data");
-  for (const key of BACKUP_KEYS) {
+  for (const key of restorableKeys(BACKUP_KEYS)) {
     if (data[key] !== undefined && data[key] !== null) {
       storage.set(key, data[key]);
     }

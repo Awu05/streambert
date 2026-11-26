@@ -50,6 +50,7 @@ import {
   CastIcon,
 } from "../components/Icons";
 import DownloadModal from "../components/DownloadModal";
+import { isKidsProfile } from "../utils/profile";
 import TrailerModal from "../components/TrailerModal";
 import BlockedStatsModal from "../components/BlockedStatsModal";
 import { useBlockedStats } from "../utils/useBlockedStats";
@@ -1019,7 +1020,7 @@ export default function MoviePage({
           saveProgress={saveProgress} markWatched={onMarkWatched} watchedThreshold={watchedThreshold}
           onClose={() => setPlaying(false)} onResolved={setM3u8Url} onSubtitles={setInterceptedSubs}
           onDubModeChange={(mode) => { setDubMode(mode); storage.set(STORAGE_KEYS.HIANIME_DUB_MODE, mode); }}
-          onDownload={() => movieDownload ? onGoToDownloads?.(movieDownload.id) : setShowDownload(true)} /></Suspense>
+          onDownload={isKidsProfile() ? undefined : () => movieDownload ? onGoToDownloads?.(movieDownload.id) : setShowDownload(true)} /></Suspense>
       )}
       {!isWebBuild() && playing && !restricted && !isUnreleased && (
         <div className="section">
@@ -1446,7 +1447,7 @@ export default function MoviePage({
         />
       )}
 
-      {showDownload && (
+      {showDownload && !isKidsProfile() && (
         <DownloadModal
           onClose={() => setShowDownload(false)}
           m3u8Url={m3u8Url}

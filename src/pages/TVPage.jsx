@@ -59,6 +59,7 @@ import {
   CastIcon,
 } from "../components/Icons";
 import DownloadModal from "../components/DownloadModal";
+import { isKidsProfile } from "../utils/profile";
 import TrailerModal from "../components/TrailerModal";
 import BlockedStatsModal from "../components/BlockedStatsModal";
 import { useBlockedStats } from "../utils/useBlockedStats";
@@ -1911,7 +1912,7 @@ export default function TVPage({
                 </div>
               )}
               onDubModeChange={(mode) => { setDubMode(mode); storage.set(STORAGE_KEYS.HIANIME_DUB_MODE, mode); }}
-              onDownload={() => currentEpDownload ? onGoToDownloads?.(currentEpDownload.id) : setShowDownload(true)} /></Suspense>
+              onDownload={isKidsProfile() ? undefined : () => currentEpDownload ? onGoToDownloads?.(currentEpDownload.id) : setShowDownload(true)} /></Suspense>
           )}
           {!isWebBuild() && playing && selectedEp && (
             <div className="section">
@@ -2779,7 +2780,7 @@ export default function TVPage({
         />
       )}
 
-      {showDownload && (
+      {showDownload && !isKidsProfile() && (
         <DownloadModal
           onClose={() => setShowDownload(false)}
           m3u8Url={m3u8Url}

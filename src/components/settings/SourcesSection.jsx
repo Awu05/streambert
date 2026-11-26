@@ -44,7 +44,7 @@ function SourceStatus({ entry }) {
   </span>;
 }
 
-export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision }) {
+export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision, readOnly }) {
   const { t } = useTranslation();
   const label = (key, values) => t("settings.sources." + key, values);
   const rowNumber = useRef(0);
@@ -76,7 +76,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
   }, [revision]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
-  const locked = running !== null || committing;
+  const locked = readOnly || running !== null || committing;
   const additions = newDefaultSources(getSources()).filter(({ id }) => !draft.some((entry) => entry.id === id));
 
   function add(source) {
@@ -169,6 +169,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
 
   return (
     <section className="settings-section source-settings" aria-labelledby="source-settings-title">
+      {readOnly && <p>{t("profiles.managed")}</p>}
       <div className="source-heading">
         <h2 className="settings-section-title" id="source-settings-title">{t("settings.tabs.sources")}</h2>
         <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => {
