@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { promisify } = require("node:util");
+const { PROFILE_ID } = require("./profiles");
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -48,6 +49,17 @@ function createAuth({ password, secret, now = Date.now }) {
       if (typeof token !== "string") return false;
       const [exp, sig, extra] = token.split(".");
       return extra === undefined && verify(signSession, `session:${exp}`, exp, sig);
+    },
+    issueProfile(profileId, version) {
+      const exp = expiry(2592000);
+      return `${profileId}.${version}.${exp}.${signSession(`profile:${profileId}:${version}:${exp}`)}`;
+    },
+    verifyProfile(token) {
+      if (typeof token !== "string") return null;
+      const [profileId, version, exp, sig, extra] = token.split(".");
+      if (extra !== undefined || !PROFILE_ID.test(profileId) || !/^\d{1,9}$/.test(version) ||
+          !verify(signSession, `profile:${profileId}:${version}:${exp}`, exp, sig)) return null;
+      return { profileId, version: Number(version) };
     },
     signUrl(resource, seconds) {
       const exp = expiry(seconds);
