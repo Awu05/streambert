@@ -66,6 +66,7 @@
       "!dist/.icon-icns/**",
       "src/ipc/**/*",
       "src/server/**/*",
+      "src/shared/**/*",
       "dist-web/**/*",
       "index.js",
       "preload.js",
