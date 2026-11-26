@@ -54,6 +54,7 @@ export const storage = {
 // Centralised storage key registry
 export const STORAGE_KEYS = {
   API_KEY: "apikey",
+  UI_LANG: "uiLang",
   UPDATE_SOURCE: "updateSource",
   PLAYER_SOURCE: "playerSource",
   HIANIME_DUB_MODE: "hianimeDubMode",
