@@ -5,8 +5,8 @@ const { pipeline } = require("node:stream/promises");
 const { setTimeout: delay } = require("node:timers/promises");
 const { RpcError, makePathGuard } = require("./ipcRegistry");
 const { validateChange } = require("./profileStore");
+const { bootstrapStorage, changeError, HOUSEHOLD_ID, splitChange } = require("./profileData");
 
-const PROFILE = "default";
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -108,7 +108,7 @@ function decodedPath(value) {
 
 async function startHttpServer({
   port, host, staticDir, auth, registry, hub, store, bootstrap, loginHtmlPath,
-  handleStream, handleApi,
+  profiles, handleProfiles, onProfileChange, handleStream, handleApi,
 }) {
   const isStaticPath = makePathGuard([staticDir]);
   const staticRoot = path.resolve(staticDir);
@@ -130,7 +130,7 @@ async function startHttpServer({
       const api = pathname.startsWith("/api/");
       const get = req.method === "GET";
       const post = req.method === "POST";
-      if (post && req.headers.origin && req.headers.origin !== origin) {
+      if (["POST", "PATCH", "DELETE"].includes(req.method) && req.headers.origin && req.headers.origin !== origin) {
         return json(res, 403, { error: "Invalid origin" });
       }
       if (get && pathname === "/login") {
@@ -146,54 +146,92 @@ async function startHttpServer({
         if (file && await serveFile(res, file, { "Cache-Control": "public, max-age=86400" })) return;
         return json(res, 404, { error: "Not found" });
       }
-      const cookie = (value, age) => `sb_session=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}` +
+      const cookie = (name, value, age) => `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}` +
         (origin.startsWith("https:") ? "; Secure" : "");
+      const session = /(?:^|;\s*)sb_session=([^;]+)/.exec(req.headers.cookie || "")?.[1];
       if (post && pathname === "/api/login") {
         const { password } = await readJson(req);
         if (!await auth.checkPassword(password)) {
           await delay(1000);
           return json(res, 401, { error: "Wrong password" });
         }
-        res.setHeader("Set-Cookie", cookie(auth.issueSession(), 2592000));
+        res.setHeader("Set-Cookie", [cookie("sb_session", auth.issueSession(), 2592000), cookie("sb_profile", "", 0)]);
+        hub.disconnectSession(session);
         res.writeHead(204).end();
         return;
       }
       if (post && pathname === "/api/logout") {
-        res.setHeader("Set-Cookie", cookie("", 0));
+        res.setHeader("Set-Cookie", [cookie("sb_session", "", 0), cookie("sb_profile", "", 0)]);
+        hub.disconnectSession(session);
         res.writeHead(204).end();
         return;
       }
-      const session = /(?:^|;\s*)sb_session=([^;]+)/.exec(req.headers.cookie || "")?.[1];
       const signedIn = auth.verifySession(session);
-      if (await handleStream?.(req, res, { url, signedIn })) return;
+      const token = signedIn && auth.verifyProfile(/(?:^|;\s*)sb_profile=([^;]+)/.exec(req.headers.cookie || "")?.[1], session);
+      const expected = req.headers["x-streambert-profile"] ?? (pathname === "/api/events" ? url.searchParams.get("profile") : null);
+      const currentProfile = () => {
+        if (!token || !auth.verifySession(session) || (expected && expected !== token.profileId)) return null;
+        const record = profiles.get(token.profileId);
+        return record?.version === token.version ? record : null;
+      };
+      const profile = currentProfile();
+      const context = { url, origin, signedIn, profile, cookie, currentProfile, session };
+      if (await handleStream?.(req, res, context)) return;
       if (!signedIn) {
         if (api) return json(res, 401, { error: "Login required" });
         if (get) return res.writeHead(302, { Location: "/login" }).end();
         return json(res, 404, { error: "Not found" });
       }
 
+      const profileRequired = () => json(res, 409, { error: "Choose a profile", code: "profile" });
+      if (api && expected && !profile) return profileRequired();
+      if (api && await handleProfiles?.(req, res, context)) return;
+      if (api && !profile) return profileRequired();
       if (get && pathname === "/api/bootstrap") {
-        return json(res, 200, { ...bootstrap(), profileId: PROFILE, storage: store.load(PROFILE) });
+        return json(res, 200, {
+          ...bootstrap(),
+          profile: profiles.publicView(profile),
+          storage: bootstrapStorage(store.load(profile.id), store.load(HOUSEHOLD_ID), profile),
+        });
       }
       if (get && pathname === "/api/events") {
-        hub.addClient(res);
+        hub.addClient(res, { profileId: profile.id, session, valid: () => Boolean(currentProfile()) });
         return;
       }
       if (post && pathname === "/api/storage") {
-        const { clientId, change, profileId = PROFILE } = await readJson(req);
-        if (profileId !== PROFILE || !validateChange(change)) {
+        const { clientId, change } = await readJson(req);
+        const active = currentProfile();
+        if (!active) return profileRequired();
+        if (!validateChange(change)) {
           return json(res, 400, { error: "Invalid storage change" });
         }
-        store.apply(PROFILE, change);
-        hub.broadcast("storage-changed", change, { except: clientId });
+        const error = changeError(change, active);
+        if (error) return json(res, 403, { error: "Not allowed for this profile", code: error });
+        const parts = splitChange(change);
+        const except = hub.clientMatches(clientId, active.id) ? clientId : undefined;
+        if (parts.profile) {
+          const watches = parts.profile.merge?.watched || Object.hasOwn(parts.profile.set ?? {}, "watched") ||
+            parts.profile.remove?.includes("watched");
+          const before = watches ? store.getValue(active.id, "watched") : undefined;
+          store.apply(active.id, parts.profile);
+          hub.broadcast("storage-changed", parts.profile, { except, to: (id) => id === active.id });
+          if (watches) onProfileChange?.(active, parts.profile, before);
+        }
+        if (parts.household) {
+          store.apply(HOUSEHOLD_ID, parts.household);
+          hub.broadcast("storage-changed", parts.household, { except });
+        }
         return res.writeHead(204).end();
       }
       if (post && pathname.startsWith("/api/rpc/")) {
         const { args, clientId } = await readJson(req);
-        const result = await registry.invoke(pathname.slice(9), args, hub.clientFor(clientId));
+        const active = currentProfile();
+        if (!active) return profileRequired();
+        const client = hub.clientMatches(clientId, active.id) ? hub.clientFor(clientId) : { send() {} };
+        const result = await registry.invoke(pathname.slice(9), args, client, { profile: active, currentProfile });
         return json(res, 200, { result });
       }
-      if (api && await handleApi?.(req, res, { url, origin })) return;
+      if (api && await handleApi?.(req, res, context)) return;
       if (get && !api) {
         const file = staticFile(pathname);
         if (file && await serveFile(res, file, {

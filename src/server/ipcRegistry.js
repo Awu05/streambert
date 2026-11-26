@@ -68,7 +68,7 @@ function makePathGuard(roots) {
   };
 }
 
-function captureIpc(ipcMain, { isPathAllowed, prepare = (_channel, args) => args }) {
+function captureIpc(ipcMain, { isPathAllowed, prepare = (_channel, args) => args, override }) {
   const original = ipcMain.handle.bind(ipcMain);
   const handlers = new Map();
   ipcMain.handle = (channel, handler) => {
@@ -81,7 +81,7 @@ function captureIpc(ipcMain, { isPathAllowed, prepare = (_channel, args) => args
     return handler({ sender: { id: -1, isDestroyed: () => false, send: client.send } }, ...args);
   }
   return {
-    async invoke(channel, args, client) {
+    async invoke(channel, args, client, context) {
       if (!RPC_ALLOWLIST.has(channel)) throw new RpcError(403, "Not allowed");
       if (!Array.isArray(args)) throw new RpcError(400, "Args must be an array");
       for (const value of PATH_ARGS[channel]?.(args) || []) {
@@ -89,7 +89,9 @@ function captureIpc(ipcMain, { isPathAllowed, prepare = (_channel, args) => args
           throw new RpcError(403, "Path not allowed");
         }
       }
-      return invokeRegistered(channel, await prepare(channel, args), client);
+      const result = override?.(channel, args, context);
+      if (result !== undefined) return result;
+      return invokeRegistered(channel, await prepare(channel, args, context), client);
     },
     invokeRegistered,
   };

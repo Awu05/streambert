@@ -1,5 +1,7 @@
 import { hasCapability, isWebBuild } from "../utils/capabilities";
-import { useState, useRef, useEffect } from "react";
+import { lazy, Suspense, useState, useRef, useEffect } from "react";
+import { currentProfile, isKidsProfile } from "../utils/profile";
+import { signOut } from "../web/profiles/profilesApi";
 import { imgUrl } from "../utils/api";
 import { useSeasonalEvent } from "../components/seasonalEvents.jsx";
 import {
@@ -14,6 +16,8 @@ import {
   BackIcon,
   HelpIcon,
 } from "./Icons";
+
+const ProfileMenu = import.meta.env.MODE === "web" ? lazy(() => import("../web/profiles/ProfileMenu")) : null;
 
 export default function Sidebar({
   page,
@@ -135,13 +139,13 @@ export default function Sidebar({
         icon={<HistoryIcon />}
         label="Library & History"
       />
-      <SideBtn
+      {!isKidsProfile() && <SideBtn
         active={page === "downloads"}
         onClick={() => onNavigate("downloads")}
         icon={<DownloadsQueueIcon />}
         label="Downloads"
         badge={activeDownloads > 0 ? activeDownloads : null}
-      />
+      />}
 
       <div className="sidebar-sep" />
 
@@ -228,6 +232,7 @@ export default function Sidebar({
           icon={<HelpIcon />}
           label="Help & Shortcuts (?)"
         />
+        {ProfileMenu && currentProfile() && <Suspense fallback={null}><ProfileMenu profile={currentProfile()} /></Suspense>}
         <SideBtn
           active={page === "settings"}
           onClick={() => onNavigate("settings")}
@@ -244,10 +249,7 @@ export default function Sidebar({
           <span className="tooltip">Quit App</span>
         </button>}
         {isWebBuild() && <button className="sidebar-btn" title="Log out" aria-label="Log out"
-          onClick={async () => {
-            const result = await fetch("/api/logout", { method: "POST" });
-            if (result.ok) location.replace("/login");
-          }}><QuitIcon /><span className="tooltip">Log out</span></button>}
+          onClick={() => { void signOut().catch(console.error); }}><QuitIcon /><span className="tooltip">Log out</span></button>}
       </div>
     </div>
   );

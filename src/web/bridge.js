@@ -31,29 +31,39 @@ const desktopOnly = [
 let clientId = null;
 export const getClientId = () => clientId;
 
-export async function apiRequest(path, data, { fetch = globalThis.fetch, window = globalThis.window, signal } = {}) {
+export async function apiRequest(path, data, {
+  fetch = globalThis.fetch, window = globalThis.window, signal, method, allowPicker = false,
+} = {}) {
   const body = data === undefined ? undefined : JSON.stringify(data);
+  const profile = window?.electron?.profile?.id;
   const response = await fetch(path, {
-    credentials: "same-origin", signal,
-    ...(body === undefined ? {} : {
-      method: "POST", keepalive: path === "/api/storage" && body.length < 15000,
-      headers: { "Content-Type": "application/json" }, body,
-    }),
+    credentials: "same-origin", signal, method: method ?? (body === undefined ? "GET" : "POST"),
+    keepalive: path === "/api/storage" && body?.length < 15000,
+    headers: {
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(profile ? { "X-Streambert-Profile": profile } : {}),
+    },
+    body,
   });
   if (response.status === 401) window.location.assign("/login");
   if (response.status === 204) return undefined;
   let result;
   try { result = await response.json(); } catch { throw new Error("Invalid server response"); }
-  if (!response.ok) throw new Error(result.error || "Request failed");
+  if (!response.ok) {
+    if (response.status === 409 && result.code === "profile" && !allowPicker) window.location.reload();
+    throw Object.assign(new Error(result.error || "Request failed"), {
+      status: response.status, code: result.code, retryAfter: result.retryAfter,
+    });
+  }
   return result;
 }
 
 export function installWebBridge(boot, {
   fetch = globalThis.fetch, EventSource = globalThis.EventSource, window = globalThis.window,
-  onStorageChanged, onReconnect,
+  onStorageChanged, onReconnect, flushStorage,
 } = {}) {
   clientId = null;
-  const source = new EventSource("/api/events");
+  const source = new EventSource(boot.profile ? `/api/events?profile=${encodeURIComponent(boot.profile.id)}` : "/api/events");
   const listeners = new Map();
   const subscribe = (channel, handler) => {
     if (!listeners.has(channel)) listeners.set(channel, new Set());
@@ -66,13 +76,21 @@ export function installWebBridge(boot, {
       const reconnect = clientId !== null;
       clientId = payload.clientId;
       if (reconnect) onReconnect?.();
+    } else if (channel === "profile-invalidated") {
+      source.close();
+      window.location.reload();
     } else if (channel === "storage-changed") onStorageChanged?.(payload);
     else for (const handler of listeners.get(channel) || []) handler(payload);
+  };
+  source.onerror = () => {
+    if (source.readyState === 2) onReconnect?.();
   };
   const rpc = async (channel, ...args) =>
     (await apiRequest(`/api/rpc/${channel}`, { args, clientId }, { fetch, window }))?.result;
   const bridge = {
     isWeb: true,
+    profile: boot.profile,
+    flushStorage,
     cleanUserAgent: boot.cleanUserAgent, envDefaults: boot.envDefaults,
     capabilities: {
       desktop: false, pip: false, externalPlayer: false, folderPicker: false,

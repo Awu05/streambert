@@ -1,4 +1,5 @@
 import { hasCapability, isWebBuild } from "./utils/capabilities";
+import { canManageHousehold, currentProfile, isKidsProfile } from "./utils/profile";
 import {
   useState,
   useEffect,
@@ -59,7 +60,10 @@ export default function App() {
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState("checking"); // 'checking' | 'ok' | 'invalid_token' | 'unreachable'
-  const [page, setPage] = useState(() => storage.get("startPage") || "home");
+  const [page, setPage] = useState(() => {
+    const start = storage.get("startPage");
+    return isKidsProfile() && start === "downloads" ? "home" : start || "home";
+  });
   const [selected, setSelected] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [dlSearchOpen, setDlSearchOpen] = useState(false);
@@ -437,7 +441,19 @@ export default function App() {
 
   // Load persisted downloads on startup + immediately prune missing files
   useEffect(() => {
-    if (!window.electron) return;
+    if (!window.electron || isKidsProfile()) return;
+    if (isWebBuild()) {
+      let active = true;
+      const refresh = () => window.electron.getDownloads().then((list) => {
+        if (active && Array.isArray(list)) setDownloads(list);
+      }).catch(console.error);
+      void refresh();
+      window.addEventListener("streambert:downloads-refresh", refresh);
+      return () => {
+        active = false;
+        window.removeEventListener("streambert:downloads-refresh", refresh);
+      };
+    }
     let mounted = true;
     window.electron.getDownloads().then(async (list) => {
       if (!mounted || !Array.isArray(list)) return;
@@ -475,8 +491,15 @@ export default function App() {
 
   // Listen for live progress events from main process
   useEffect(() => {
-    if (!window.electron) return;
+    if (!window.electron || isKidsProfile()) return;
     const handler = window.electron.onDownloadProgress((update) => {
+      if (update.deleted) {
+        setDownloads((prev) => prev.filter((download) => download.id !== update.id));
+        return;
+      }
+      if (isWebBuild() && (update.status === "completed" || update.status === "starting")) {
+        window.dispatchEvent(new Event("streambert:downloads-refresh"));
+      }
       // ── Desktop notification ──────────────────────
       if (
         update.status === "completed" &&
@@ -704,6 +727,7 @@ export default function App() {
   }, []);
 
   const navigate = useCallback((pg, data = null) => {
+    if (pg === "downloads" && isKidsProfile()) return;
     setNavStack((prev) => [
       ...prev,
       { page: pageRef.current, selected: selectedRef.current },
@@ -1031,10 +1055,14 @@ export default function App() {
   );
 
   if (!apiKeyLoaded) return null; // wait for secure storage to resolve
-  if (!apiKey && !skipped)
+  if (!apiKey && !skipped && canManageHousehold())
     return <SetupScreen onSave={saveApiKey} onSkip={() => setSkipped(true)} />;
 
   const hasCustomTitlebar = platform === "win32" || platform === "linux";
+  const profile = currentProfile();
+  const ownDownloads = profile?.main
+    ? downloads.filter((download) => (download.profileId || "default") === profile.id)
+    : downloads;
 
   return (
     <ErrorBoundary>
@@ -1054,14 +1082,15 @@ export default function App() {
         />
 
         <div className="main">
+          {!apiKey && !canManageHousehold() && <div className="api-status-banner">{t("profiles.tmdbRequired")}</div>}
           {/* ── API key status banner ── */}
           {/* Suspense boundary: lazy page chunks are fetched on first visit */}
           {apiKeyStatus === "invalid_token" && (
             <div className="api-status-banner api-status-error">
               <span>⚠ {t("app.apiStatus.invalidToken")}</span>
-              <button className="api-status-btn" onClick={changeApiKey}>
+              {canManageHousehold() && <button className="api-status-btn" onClick={changeApiKey}>
                 {t("app.apiStatus.updateToken")}
-              </button>
+              </button>}
             </div>
           )}
           {apiKeyStatus === "unreachable" && (
@@ -1126,7 +1155,7 @@ export default function App() {
                 watched={watched}
                 onMarkWatched={markWatched}
                 onMarkUnwatched={markUnwatched}
-                downloads={downloads}
+                downloads={ownDownloads}
                 onGoToDownloads={handleGoToDownloads}
                 onSelect={handleSelectResult}
               />
@@ -1149,7 +1178,7 @@ export default function App() {
                 watched={watched}
                 onMarkWatched={markWatched}
                 onMarkUnwatched={markUnwatched}
-                downloads={downloads}
+                downloads={ownDownloads}
                 onGoToDownloads={handleGoToDownloads}
                 onEpisodeChange={setWatchingEpisode}
               />

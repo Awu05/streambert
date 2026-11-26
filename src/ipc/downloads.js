@@ -20,6 +20,7 @@ const downloadsFile = () =>
 
 // Track running child processes by download id
 const activeProcs = new Map();
+const finishing = new Set();
 
 // ── Trusted binary registry ───────────────────────────────────────────────────
 // Maps session tokens (returned to the Renderer)
@@ -47,7 +48,7 @@ function loadDownloads() {
     );
     for (const d of sorted) {
       const key =
-        d.tmdbId && d.mediaType
+        !d.profileId && d.tmdbId && d.mediaType
           ? `${d.tmdbId}|${d.mediaType}|${d.season ?? ""}|${d.episode ?? ""}`
           : d.id;
       if (!seen.has(key)) seen.set(key, d);
@@ -63,8 +64,16 @@ function saveDownloads() {
     const toSave = downloads.filter(
       (d) => d.status !== "downloading" && d.status !== "error",
     );
-    fs.writeFileSync(downloadsFile(), JSON.stringify(toSave, null, 2));
-  } catch {}
+    const file = downloadsFile();
+    const data = JSON.stringify(toSave, null, 2);
+    if (process.env.STREAMBERT_SERVER === "1") {
+      const temp = file + ".tmp";
+      fs.writeFileSync(temp, data, { mode: 0o600 });
+      fs.renameSync(temp, file);
+    } else fs.writeFileSync(file, data);
+  } catch (error) {
+    if (process.env.STREAMBERT_SERVER === "1") console.error("Could not save downloads:", error.message);
+  }
 }
 
 function cleanupTempFiles(downloadPath) {
@@ -87,6 +96,40 @@ function cleanupTempFiles(downloadPath) {
       }
     }
   } catch {}
+}
+
+function deleteOwnedDownload(id) {
+  const entry = downloads.find((download) => download.id === id);
+  if (!entry) return { ok: false, error: "Download not found" };
+  if (finishing.has(id)) return { ok: false, error: "Download is in progress" };
+  const child = activeProcs.get(id);
+  const isolated = entry.profileId && entry.downloadPath && path.basename(entry.downloadPath) === id;
+  function cleanDirectory() {
+    cleanupTempFiles(entry.downloadPath);
+    try { fs.rmdirSync(entry.downloadPath); } catch {}
+  }
+  try {
+    if (child && !child.kill("SIGKILL")) return { ok: false, error: "Could not stop download" };
+    for (const file of [entry.filePath, ...(entry.subtitlePaths ?? []).map((sub) => sub.path || sub)]) {
+      if (file) fs.rmSync(file, { force: true });
+    }
+    if (isolated) {
+      if (child) child.once("close", cleanDirectory);
+      else cleanDirectory();
+    }
+    downloads = downloads.filter((download) => download.id !== id);
+    saveDownloads();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+function updateDownload(id, patch) {
+  const entry = downloads.find((download) => download.id === id);
+  if (!entry) return;
+  Object.assign(entry, patch);
+  saveDownloads();
 }
 
 function killAllDownloads() {
@@ -233,6 +276,8 @@ function register(getMainWindow) {
         posterPath,
         tmdbId,
         subtitles,
+        profileId,
+        watchedAt,
       },
     ) => {
       try {
@@ -243,9 +288,14 @@ function register(getMainWindow) {
         }
         const id = crypto.randomUUID();
         const logPath = path.join(os.tmpdir(), `streambert_dl_${id}.log`);
+        if (profileId) {
+          downloadPath = path.join(downloadPath, id);
+          fs.mkdirSync(downloadPath, { recursive: true });
+        }
 
         const entry = {
           id,
+          ...(profileId ? { profileId, watchedAt } : {}),
           name,
           m3u8Url,
           downloadPath,
@@ -261,7 +311,7 @@ function register(getMainWindow) {
           completedAt: null,
           mediaId: mediaId || null,
           mediaType: mediaType || null,
-          season: season || null,
+          season: profileId ? season ?? null : season || null,
           episode: episode || null,
           posterPath: posterPath || null,
           tmdbId: tmdbId || mediaId || null,
@@ -289,7 +339,7 @@ function register(getMainWindow) {
           d.mediaType === entry.mediaType &&
           String(d.season ?? "") === String(entry.season ?? "") &&
           String(d.episode ?? "") === String(entry.episode ?? "");
-        downloads = downloads.filter((d) => !isSameMedia(d));
+        if (!profileId) downloads = downloads.filter((d) => !isSameMedia(d));
 
         const args = [
           "--cli",
@@ -310,6 +360,7 @@ function register(getMainWindow) {
           stdio: ["ignore", "pipe", "pipe"],
         });
         activeProcs.set(id, proc);
+        if (profileId) sendProgress({ id, status: "starting" });
 
         const handleLine = (line) => {
           const trimmed = line.trim();
@@ -681,6 +732,7 @@ function register(getMainWindow) {
                 );
               },
             );
+            if (profileId) finishing.add(id);
             Promise.all(subPromises).then((results) => {
               const i2 = downloads.findIndex((d) => d.id === id);
               if (i2 !== -1) {
@@ -691,7 +743,7 @@ function register(getMainWindow) {
                   subtitlePaths: downloads[i2].subtitlePaths,
                 });
               }
-            });
+            }).finally(() => finishing.delete(id));
           }
 
           sendProgress({
@@ -708,6 +760,13 @@ function register(getMainWindow) {
             logPath: downloads[idx].logPath,
           });
           saveDownloads();
+          // Web profiles: a finished copy replaces this profile's older download
+          // of the same title (each download has its own folder, so remove it).
+          if (code === 0 && profileId) {
+            for (const old of downloads.filter((d) => d.profileId === profileId && isSameMedia(d) && !activeProcs.has(d.id))) {
+              deleteOwnedDownload(old.id);
+            }
+          }
         });
 
         return { ok: true, id };
@@ -977,4 +1036,7 @@ module.exports = {
   saveDownloads,
   killAllDownloads,
   getDownloads: () => downloads,
+  deleteDownload: deleteOwnedDownload,
+  updateDownload,
+  isActive: (id) => activeProcs.has(id) || finishing.has(id),
 };

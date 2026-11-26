@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { promisify } = require("node:util");
+const { PROFILE_ID } = require("./profiles");
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -42,19 +43,34 @@ function createAuth({ password, secret, now = Date.now }) {
     },
     issueSession() {
       const exp = expiry(2592000);
-      return `${exp}.${signSession(`session:${exp}`)}`;
+      const nonce = crypto.randomBytes(16).toString("hex");
+      return `${exp}.${nonce}.${signSession(`session:${exp}:${nonce}`)}`;
     },
     verifySession(token) {
       if (typeof token !== "string") return false;
-      const [exp, sig, extra] = token.split(".");
-      return extra === undefined && verify(signSession, `session:${exp}`, exp, sig);
+      const [exp, nonce, sig, extra] = token.split(".");
+      if (sig === undefined) return verify(signSession, `session:${exp}`, exp, nonce);
+      return extra === undefined && /^[a-f0-9]{32}$/.test(nonce) &&
+        verify(signSession, `session:${exp}:${nonce}`, exp, sig);
     },
-    signUrl(resource, seconds) {
+    issueProfile(profileId, version, session = "") {
+      const exp = expiry(2592000);
+      return `${profileId}.${version}.${exp}.${signSession(`profile:${profileId}:${version}:${exp}:${session}`)}`;
+    },
+    verifyProfile(token, session = "") {
+      if (typeof token !== "string") return null;
+      const [profileId, version, exp, sig, extra] = token.split(".");
+      if (extra !== undefined || !PROFILE_ID.test(profileId) || !/^\d{1,9}$/.test(version) ||
+          !verify(signSession, `profile:${profileId}:${version}:${exp}:${session}`, exp, sig)) return null;
+      return { profileId, version: Number(version) };
+    },
+    signUrl(resource, seconds, { profile = false } = {}) {
       const exp = expiry(seconds);
-      return `exp=${exp}&sig=${signLink(`url:${resource}:${exp}`)}`;
+      const sign = profile ? signSession : signLink;
+      return `exp=${exp}&sig=${sign(`url:${resource}:${exp}`)}`;
     },
-    verifyUrl(resource, exp, sig) {
-      return verify(signLink, `url:${resource}:${exp}`, exp, sig);
+    verifyUrl(resource, exp, sig, { profile = false } = {}) {
+      return verify(profile ? signSession : signLink, `url:${resource}:${exp}`, exp, sig);
     },
   };
 }

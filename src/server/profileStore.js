@@ -1,5 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { MAIN_ID, PROFILE_ID } = require("./profiles");
+const { HOUSEHOLD_ID } = require("./profileData");
 
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const validKey = (key) => typeof key === "string" && key.length > 0 &&
@@ -23,12 +25,16 @@ function createProfileStore(baseDir, { debounceMs = 300 } = {}) {
   const profiles = new Map();
   let timer;
 
-  function get(profileId) {
-    if (typeof profileId !== "string" || !/^[a-z0-9_-]{1,32}$/.test(profileId)) {
+  function storageFile(profileId) {
+    if (typeof profileId !== "string" || !PROFILE_ID.test(profileId)) {
       throw new Error("bad profile id");
     }
+    return path.join(baseDir, "profiles", profileId, "storage.json");
+  }
+
+  function get(profileId) {
     if (profiles.has(profileId)) return profiles.get(profileId);
-    const file = path.join(baseDir, "profiles", profileId, "storage.json");
+    const file = storageFile(profileId);
     const profile = { file, data: Object.create(null), dirty: false };
     try {
       const data = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -60,6 +66,11 @@ function createProfileStore(baseDir, { debounceMs = 300 } = {}) {
   return {
     load: (id) => structuredClone(get(id).data),
     getValue: (id, key) => structuredClone(get(id).data[key]),
+    remove(id) {
+      if (id === MAIN_ID || id === HOUSEHOLD_ID) throw new Error("Cannot delete reserved profile storage");
+      fs.rmSync(path.dirname(storageFile(id)), { recursive: true, force: true });
+      profiles.delete(id);
+    },
     apply(id, change) {
       if (!validateChange(change)) throw new TypeError("Invalid storage change");
       const profile = get(id);

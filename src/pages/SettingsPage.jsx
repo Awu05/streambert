@@ -4,7 +4,9 @@ import { useTranslation, Trans } from "react-i18next";
 import { UI_LANGUAGES, resolveLanguage } from "../i18n";
 import { setGamepadFocus } from "../utils/gamepadSpatialNav";
 import { SETTINGS_TABS, tabForSection } from "../utils/settingsTabs";
+import { AGE_LIMIT_OPTIONS, canManageHousehold, isKidsProfile } from "../utils/profile";
 import SourcesSection from "../components/settings/SourcesSection";
+import Toggle from "../components/Toggle";
 import UpdateModal from "../components/UpdateModal";
 import {
   storage,
@@ -180,18 +182,6 @@ function SettingsSelect({ value, onChange, options, style, label, invalid }) {
 // ── Start page config ─────────────────────────────────────────────────────────
 
 // Age limit options: null = none, or specific ages
-const AGE_LIMIT_OPTIONS = [
-  { value: "", labelKey: "settings.ageLimit.none" },
-  { value: "0", labelKey: "settings.ageLimit.a0" },
-  { value: "7", labelKey: "settings.ageLimit.a7" },
-  { value: "12", labelKey: "settings.ageLimit.a12" },
-  { value: "13", labelKey: "settings.ageLimit.a13" },
-  { value: "15", labelKey: "settings.ageLimit.a15" },
-  { value: "16", labelKey: "settings.ageLimit.a16" },
-  { value: "17", labelKey: "settings.ageLimit.a17" },
-  { value: "18", labelKey: "settings.ageLimit.a18" },
-];
-
 // ── Confirmation Dialog ───────────────────────────────────────────────────────
 function ResetConfirmDialog({ onConfirm, onCancel }) {
   const { t } = useTranslation();
@@ -395,45 +385,6 @@ function ConfirmDialog({
 }
 
 // ── Toggle Switch ─────────────────────────────────────────────────────────────
-function Toggle({ value, onChange, title, disabled }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={!!value}
-      aria-label={title}
-      disabled={disabled}
-      onClick={() => onChange(!value)}
-      title={title}
-      style={{
-        background: value ? "var(--red)" : "var(--surface2)",
-        border: "1px solid " + (value ? "var(--red)" : "var(--border)"),
-        borderRadius: 20,
-        width: 40,
-        height: 22,
-        cursor: "pointer",
-        position: "relative",
-        flexShrink: 0,
-        transition: "background 0.2s, border-color 0.2s",
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: value ? 20 : 2,
-          width: 16,
-          height: 16,
-          background: "#fff",
-          borderRadius: "50%",
-          transition: "left 0.2s",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-        }}
-      />
-    </button>
-  );
-}
-
 // ── Status Badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   if (!status) return null;
@@ -2102,8 +2053,10 @@ function SubtitleSettingsSection() {
   const handleSave = () => {
     storage.set(STORAGE_KEYS.SUBTITLE_ENABLED, enabled ? 1 : 0);
     storage.set(STORAGE_KEYS.SUBTITLE_LANG, lang);
-    secureStorage.set(STORAGE_KEYS.SUBDL_API_KEY, subdlApiKey.trim());
-    secureStorage.set(STORAGE_KEYS.WYZIE_API_KEY, wyzieApiKey.trim());
+    if (canManageHousehold()) {
+      secureStorage.set(STORAGE_KEYS.SUBDL_API_KEY, subdlApiKey.trim());
+      secureStorage.set(STORAGE_KEYS.WYZIE_API_KEY, wyzieApiKey.trim());
+    }
     // refresh playerSettings prop (subtitle lang)
     window.dispatchEvent(new CustomEvent("streambert:player-settings-changed"));
     setSaved(true);
@@ -2203,6 +2156,7 @@ function SubtitleSettingsSection() {
             />
           </div>
 
+          {canManageHousehold() ? <>
           {/* Wyzie API key */}
           <div style={{ marginBottom: 20 }}>
             <div
@@ -2393,6 +2347,7 @@ function SubtitleSettingsSection() {
               )}
             </div>
           </div>
+          </> : <p>{t("profiles.managed")}</p>}
         </>
       )}
 
@@ -3397,7 +3352,8 @@ function SettingsTopBar({ sectionRefs, contentRef, selectTab }) {
                 padding: 6,
               }}
             >
-              {SECTION_NAV.filter((section) => hasCapability("discord") || section.id !== "discordRpc").map((s) => (
+              {SECTION_NAV.filter(({ id }) => sectionRefs[id]?.current &&
+                (hasCapability("discord") || id !== "discordRpc")).map((s) => (
                 <button
                   key={s.id}
                   onClick={() => scrollTo(s.id)}
@@ -3458,12 +3414,52 @@ function SettingsTopBar({ sectionRefs, contentRef, selectTab }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+function DownloadCleanupSettings({ readOnly }) {
+  const { t } = useTranslation();
+  const storedDays = storage.get("downloadCleanupDays") ?? 7;
+  const storedLimit = storage.get("downloadSpaceLimitGb") ?? 0;
+  const [daysOn, setDaysOn] = useState(storedDays > 0);
+  const [limitOn, setLimitOn] = useState(storedLimit > 0);
+  const [days, setDays] = useState(storedDays || 7);
+  const [limit, setLimit] = useState(storedLimit || 100);
+  const [feedback, setFeedback] = useState(null);
+
+  async function save(event) {
+    event.preventDefault();
+    storage.set("downloadCleanupDays", daysOn ? Number(days) : 0);
+    storage.set("downloadSpaceLimitGb", limitOn ? Number(limit) : 0);
+    const saved = await window.electron.flushStorage();
+    setFeedback(saved ? "settings.common.savedCheck" : "profiles.errors.requestFailed");
+  }
+
+  return <form className="profile-cleanup" onSubmit={save}>
+    <h2 className="settings-section-title">{t("profiles.downloads.cleanup")}</h2>
+    <p>{t("profiles.downloads.help")}</p>
+    {readOnly && <p>{t("profiles.managed")}</p>}
+    <div className="profile-toggle"><span>{t("profiles.downloads.days", { count: Number(days) })}</span>
+      <Toggle value={daysOn} disabled={readOnly} title={t("profiles.downloads.days", { count: Number(days) })} onChange={setDaysOn} /></div>
+    <input className="apikey-input" type="number" min="1" max="90" value={days} required
+      aria-label={t("profiles.downloads.dayUnits")} disabled={readOnly || !daysOn} onChange={(event) => setDays(event.target.value)} />
+    <div className="profile-toggle"><span>{t("profiles.downloads.limit")}</span>
+      <Toggle value={limitOn} disabled={readOnly} title={t("profiles.downloads.limit")} onChange={setLimitOn} /></div>
+    <input className="apikey-input" type="number" min="1" max="100000" value={limit} required
+      aria-label={t("profiles.downloads.gbUnits")} disabled={readOnly || !limitOn} onChange={(event) => setLimit(event.target.value)} />
+    {!readOnly && <div className="profile-actions">
+      <button className="btn btn-primary" type="submit">{t("settings.common.save")}</button>
+      {feedback && <span role="status">{t(feedback)}</span>}
+    </div>}
+  </form>;
+}
+
 export default function SettingsPage({
   apiKey,
   onChangeApiKey,
   initialSection,
 }) {
   const { t } = useTranslation();
+  const kids = isKidsProfile();
+  const household = canManageHousehold();
+  const tabs = kids ? SETTINGS_TABS.filter(({ id }) => !["sources", "downloads", "data"].includes(id)) : SETTINGS_TABS;
   const [downloadPath, setDownloadPath] = useState(
     () => storage.get(STORAGE_KEYS.DOWNLOAD_PATH) || "",
   );
@@ -3490,10 +3486,11 @@ export default function SettingsPage({
 
   // ── Section refs for navigation ────────────────────────────────────────────
   const [tab, setTab] = useState(() => {
-    const savedTab = storage.get(STORAGE_KEYS.SETTINGS_TAB);
-    return tabForSection(initialSection) ?? (SETTINGS_TABS.some(({ id }) => id === savedTab) ? savedTab : "general");
+    const requested = tabForSection(initialSection) ?? storage.get(STORAGE_KEYS.SETTINGS_TAB);
+    return tabs.some(({ id }) => id === requested) ? requested : "general";
   });
   const selectTab = (id) => {
+    if (!tabs.some((tab) => tab.id === id)) return;
     setTab(id);
     storage.set(STORAGE_KEYS.SETTINGS_TAB, id);
   };
@@ -3618,6 +3615,7 @@ export default function SettingsPage({
   const [sizes, setSizes] = useState({ cache: null, downloads: null });
 
   useEffect(() => {
+    if (!household) return;
     if (typeof window === "undefined" || !window.electron) {
       setSizes({ cache: -1, downloads: -1 });
       return;
@@ -3636,7 +3634,7 @@ export default function SettingsPage({
         setSizes({ cache: -1, downloads: -1 });
       }
     })();
-  }, []);
+  }, [household]);
 
   const pickFolder = async () => {
     if (!isElectron) return;
@@ -3780,7 +3778,7 @@ export default function SettingsPage({
         </div>
 
         <div className="settings-tabs" role="tablist" aria-label={t("settings.tabs.label")}>
-          {SETTINGS_TABS.map(({ id }, index) => (
+          {tabs.map(({ id }, index) => (
             <button key={id} id={"settings-tab-" + id} type="button" role="tab"
               className="settings-tab" aria-selected={tab === id} aria-controls={"settings-panel-" + id}
               onClick={() => selectTab(id)}
@@ -3789,7 +3787,7 @@ export default function SettingsPage({
                 event.preventDefault();
                 event.stopPropagation();
                 const step = event.key === "ArrowLeft" ? -1 : 1;
-                const next = SETTINGS_TABS[(index + step + SETTINGS_TABS.length) % SETTINGS_TABS.length].id;
+                const next = tabs[(index + step + tabs.length) % tabs.length].id;
                 selectTab(next);
                 setGamepadFocus(document.getElementById("settings-tab-" + next));
               }}>
@@ -3802,10 +3800,10 @@ export default function SettingsPage({
           <div ref={secUpdates} style={{ scrollMarginTop: 80 }}>
 
             {/* Version & Updates */}
-            {hasCapability("updater") && <><VersionSection /><Divider /></>}
+            {!kids && hasCapability("updater") && <><VersionSection /><Divider /></>}
 
             {/* TMDB API Token */}
-            <div style={{ marginBottom: 40 }}>
+            {!kids && <><div style={{ marginBottom: 40 }}>
               <div className="settings-section-title">
                 {t("settings.general.tmdbTitle")}
               </div>
@@ -3841,27 +3839,26 @@ export default function SettingsPage({
                     ? apiKey.slice(0, 8) + "••••••••••••••••"
                     : t("settings.general.notSet")}
                 </code>
-                <button className="btn btn-ghost" onClick={onChangeApiKey}>
+                {household ? <button className="btn btn-ghost" onClick={onChangeApiKey}>
                   {t("settings.general.changeToken")}
-                </button>
+                </button> : <span>{t("profiles.managed")}</span>}
               </div>
             </div>
 
-            <Divider />
+            <Divider /></>}
 
             <UiLanguageSection />
 
             <Divider />
 
             <TmdbLanguageSection />
-            <Divider />
-            <StartPageSection />
+            {!kids && <><Divider /><StartPageSection /></>}
           </div>
-          <Divider />
+          {!kids && <><Divider />
           <div ref={secNotifications} style={{ scrollMarginTop: 80 }}>
             <NotificationsSection />
-          </div>
-          {hasCapability("discord") && <>
+          </div></>}
+          {!kids && hasCapability("discord") && <>
             <Divider />
             <div ref={secDiscordRpc} style={{ scrollMarginTop: 80 }}>
               <DiscordRpcSection />
@@ -3907,6 +3904,7 @@ export default function SettingsPage({
                   style={{ flex: 1, minWidth: 260, marginBottom: 0 }}
                   placeholder={DEFAULT_INVIDIOUS_BASE}
                   value={invidiousBase}
+                  readOnly={!household}
                   onChange={(e) => {
                     setInvidiousBase(e.target.value);
                     setInvidiousStatus(null);
@@ -3914,7 +3912,7 @@ export default function SettingsPage({
                 />
                 <button
                   className="btn btn-ghost"
-                  disabled={invidiousChecking}
+                  disabled={!household || invidiousChecking}
                   onClick={() => checkInvidious(invidiousBase)}
                   style={{ opacity: invidiousChecking ? 0.5 : 1 }}
                 >
@@ -3922,10 +3920,11 @@ export default function SettingsPage({
                     ? t("settings.playback.checking")
                     : t("settings.playback.check")}
                 </button>
-                <button className="btn btn-primary" onClick={saveInvidiousBase}>
+                <button className="btn btn-primary" onClick={saveInvidiousBase} disabled={!household}>
                   {t("settings.common.save")}
                 </button>
               </div>
+              {!household && <p>{t("profiles.managed")}</p>}
 
               {invidiousStatus && (
                 <div
@@ -4300,11 +4299,11 @@ export default function SettingsPage({
           </div>
         </div>
 
-        <div role="tabpanel" id="settings-panel-sources" aria-labelledby="settings-tab-sources" data-settings-tab="sources" hidden={tab !== "sources"}>
+        {!kids && <div role="tabpanel" id="settings-panel-sources" aria-labelledby="settings-tab-sources" data-settings-tab="sources" hidden={tab !== "sources"}>
           <div ref={secSources} style={{ scrollMarginTop: 80 }}>
-            <SourcesSection Toggle={Toggle} Select={SettingsSelect} ConfirmDialog={ConfirmDialog} revision={sourceRevision} />
+            <SourcesSection Toggle={Toggle} Select={SettingsSelect} ConfirmDialog={ConfirmDialog} revision={sourceRevision} readOnly={!household} />
           </div>
-        </div>
+        </div>}
 
         <div role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance" data-settings-tab="appearance" hidden={tab !== "appearance"}>
           <div ref={secInterface} style={{ scrollMarginTop: 80 }}>
@@ -4315,7 +4314,7 @@ export default function SettingsPage({
         </div>
 
         <div role="tabpanel" id="settings-panel-library" aria-labelledby="settings-tab-library" data-settings-tab="library" hidden={tab !== "library"}>
-          <div ref={secContent} style={{ scrollMarginTop: 80 }}>
+          {!kids && <><div ref={secContent} style={{ scrollMarginTop: 80 }}>
 
             <div style={{ marginBottom: 40 }}>
               <div className="settings-section-title">
@@ -4394,13 +4393,13 @@ export default function SettingsPage({
               </div>
             </div>
           </div>
-          <Divider />
+          <Divider /></>}
           <div ref={secLibrary} style={{ scrollMarginTop: 80 }}>
             <LibraryPrivacySection />
           </div>
         </div>
 
-        <div role="tabpanel" id="settings-panel-downloads" aria-labelledby="settings-tab-downloads" data-settings-tab="downloads" hidden={tab !== "downloads"}>
+        {!kids && <div role="tabpanel" id="settings-panel-downloads" aria-labelledby="settings-tab-downloads" data-settings-tab="downloads" hidden={tab !== "downloads"}>
           <div ref={secDownloads} style={{ scrollMarginTop: 80 }}>
 
             <div style={{ marginBottom: 40 }}>
@@ -4454,14 +4453,15 @@ export default function SettingsPage({
               )}
               </>}
             </div>
+            {isWebBuild() && <DownloadCleanupSettings readOnly={!household} />}
           </div>
-        </div>
+        </div>}
 
-        <div role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" data-settings-tab="data" hidden={tab !== "data"}>
+        {!kids && <div role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" data-settings-tab="data" hidden={tab !== "data"}>
           <div ref={secBackup} style={{ scrollMarginTop: 80 }}>
             <BackupRestoreSection onRestored={() => setSourceRevision((value) => value + 1)} />
           </div>
-          <Divider />
+          {household && <><Divider />
           <div ref={secStorage} style={{ scrollMarginTop: 80 }}>
 
             <div
@@ -4615,8 +4615,8 @@ export default function SettingsPage({
                 </div>
               </div>}
             </div>
-          </div>
-        </div>
+          </div></>}
+        </div>}
       </div>
     </>
   );

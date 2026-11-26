@@ -24,6 +24,15 @@ export default function DownloadedWebPlayer({ download, progressKey, onClose, sa
     return () => controller.abort();
   }, [id]);
 
+  useEffect(() => {
+    if (state.mode !== "ready") return;
+    const controller = new AbortController();
+    const timer = setInterval(() => {
+      apiRequest(`/api/files/playing/${id}`, {}, { signal: controller.signal }).catch(() => {});
+    }, 30000);
+    return () => { clearInterval(timer); controller.abort(); };
+  }, [id, state.mode]);
+
   if (state.mode === "ready") {
     const subtitles = (download.subtitlePaths || []).map((subtitle, index) => ({
       src: state.links.subtitles[index],
