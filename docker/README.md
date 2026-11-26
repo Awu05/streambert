@@ -1,6 +1,6 @@
 # Streambert in Docker
 
-The image runs Streambert as a web app on port 8080. Sign in from a PC, phone, or TV browser. Devices share one library, watch history, and download queue, and can play different videos at the same time.
+The image runs Streambert as a web app on port 8080. Sign in from a PC, phone, or TV browser. Household members can keep separate libraries and watch histories and play different videos at the same time.
 
 Images are published to `ghcr.io/awu05/streambert` for `linux/amd64` and `linux/arm64` whenever a release is tagged.
 
@@ -29,14 +29,24 @@ Set these in `.env`, then run `docker compose up -d` to apply them.
 | `STREAMBERT_WEB_PORT` | `8080` | Port on the host. |
 | `STREAMBERT_MAX_HIDDEN_PAGES` | `2` | Provider pages used at once to find streams. New requests wait when all are in use. Resolved streams play independently of the limit. |
 | `STREAMBERT_LOW_RAM` | `1` | Limits memory use, including at most 3 Chromium renderer processes. Set `0` when `STREAMBERT_MAX_HIDDEN_PAGES` is above 2. |
+| `STREAMBERT_RESET_MAIN_PIN` | `0` | Set to `1` for one startup to clear a forgotten main profile PIN. |
 | `PUID` and `PGID` | `1000` | User and group that own `./config` and `./downloads`. |
 | `TZ` | `Etc/UTC` | Server time zone. |
 
 | Folder on the host | In the container | Contents |
 | --- | --- | --- |
-| `./config` | `/config` | Server profile, library, watch history, credentials, and application data. |
+| `./config` | `/config` | Profiles, libraries, watch history, credentials, and application data. |
 | `./downloads` | `/config/Downloads` | Downloads. The download folder is set by the server; the bundled downloader is at `/opt/vid-dl`. |
 
+## Profiles
+
+After signing in, select a profile on **Who's watching?**. The browser remembers your choice until you choose **Switch profile**. Each profile has its own history, Continue Watching, library, and preferences. On upgrade, the existing data belongs to **Main**.
+
+Use **My PIN** in the profile menu to set, change, or remove your four-digit PIN. Main manages profiles and household settings, including sources and download clean-up. Main can remove a forgotten PIN from another profile in **Manage profiles**. To reset the main PIN, set `STREAMBERT_RESET_MAIN_PIN=1` and restart the service with `docker compose up -d`. Remove the setting and run `docker compose up -d` again so later startups retain any new PIN.
+
+Main chooses a rating limit and country for each Kids profile. The browser applies the rating filter. Kids profiles have access to their own viewing data and preferences. Downloads and household settings are restricted.
+
+Adults see the downloads they started. Main can view and filter all downloads by owner and bulk-delete selected items. Existing downloads belong to Main. Automatic clean-up runs on startup and hourly, deleting watched downloads after seven days by default. Main can change the delay or set a space limit in **Settings → Downloads**.
 ## Playback
 
 The browser sources are VidFast and Aether for movies and TV, VidNest for TV, and HiAnime for anime. In the player, **Options → Source** shows which sources work for the current title.

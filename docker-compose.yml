@@ -13,6 +13,7 @@ services:
       STREAMBERT_PASSWORD: "${STREAMBERT_PASSWORD:?Set STREAMBERT_PASSWORD in .env (see .env.example)}"
       STREAMBERT_MAX_HIDDEN_PAGES: "${STREAMBERT_MAX_HIDDEN_PAGES:-2}"
       STREAMBERT_LOW_RAM: "${STREAMBERT_LOW_RAM:-1}"
+      STREAMBERT_RESET_MAIN_PIN: "${STREAMBERT_RESET_MAIN_PIN:-0}"
     volumes:
       - ./config:/config     # server profile, library, watch history, credentials
       - ./downloads:/config/Downloads
