@@ -25,12 +25,14 @@ function loadOrCreateSecret(filename) {
 }
 
 function createAuth({ password, secret, now = Date.now }) {
-  // scrypt keeps password guessing slow; the key also ties sessions to the password.
+  // scrypt keeps password guessing slow. Sessions are signed with the derived
+  // key, so changing the password signs every device out.
   const passwordKey = crypto.scryptSync(password, secret, 32);
-  const passwordTag = passwordKey.toString("hex");
-  const sign = (value) => crypto.createHmac("sha256", secret).update(value).digest("hex");
+  const signer = (key) => (value) => crypto.createHmac("sha256", key).update(value).digest("hex");
+  const signSession = signer(passwordKey);
+  const signLink = signer(secret);
   const expiry = (seconds) => String(Math.floor(now() / 1000) + seconds);
-  const verify = (value, exp, sig) => /^[0-9]{1,12}$/.test(exp || "") &&
+  const verify = (sign, value, exp, sig) => /^[0-9]{1,12}$/.test(exp || "") &&
     Number(exp) > Math.floor(now() / 1000) &&
     /^[a-f0-9]{64}$/.test(sig || "") &&
     crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(sign(value), "hex"));
@@ -40,19 +42,19 @@ function createAuth({ password, secret, now = Date.now }) {
     },
     issueSession() {
       const exp = expiry(2592000);
-      return `${exp}.${sign(`session:${passwordTag}:${exp}`)}`;
+      return `${exp}.${signSession(`session:${exp}`)}`;
     },
     verifySession(token) {
       if (typeof token !== "string") return false;
       const [exp, sig, extra] = token.split(".");
-      return extra === undefined && verify(`session:${passwordTag}:${exp}`, exp, sig);
+      return extra === undefined && verify(signSession, `session:${exp}`, exp, sig);
     },
     signUrl(resource, seconds) {
       const exp = expiry(seconds);
-      return `exp=${exp}&sig=${sign(`url:${resource}:${exp}`)}`;
+      return `exp=${exp}&sig=${signLink(`url:${resource}:${exp}`)}`;
     },
     verifyUrl(resource, exp, sig) {
-      return verify(`url:${resource}:${exp}`, exp, sig);
+      return verify(signLink, `url:${resource}:${exp}`, exp, sig);
     },
   };
 }
