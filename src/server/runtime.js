@@ -15,6 +15,7 @@ const { createProfiles, MAIN_ID } = require("./profiles");
 const { createProfileHandler } = require("./profileRoutes");
 const { HOUSEHOLD_ID, HOUSEHOLD_KEYS, watchedDiff } = require("./profileData");
 const { canAccess, downloadKey, ownerOf, sizeOf, stampWatched, visibleDownloads } = require("./downloadAccess");
+const { startCleanup } = require("./downloadCleanup");
 
 const WYZIE_ORIGINS = ["https://subs.wyzie.ru", "https://sub.wyzie.io"];
 const HOUSEHOLD_CREDENTIALS = new Set(["apikey", "subdlApiKey", "wyzieApiKey"]);
@@ -33,6 +34,7 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
   let timer;
   let server;
   let handleFile;
+  let stopCleanup;
   hub.onClientRemoved(resolver.cancel);
 
   function assertDownloadPath(file) {
@@ -46,10 +48,10 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
     return entry;
   }
 
-  function deleteDownload(id) {
+  function deleteDownload(id, { automatic = false } = {}) {
     const entry = getDownloads().find((item) => item.id === id);
     if (!entry) return { ok: false, error: "Download not found" };
-    if (handleFile?.isPreparing(entry.filePath)) {
+    if (automatic ? isBusy(entry) : handleFile?.isPreparing(entry.filePath)) {
       return { ok: false, error: "Download is in use" };
     }
     for (const file of [entry.filePath, entry.downloadPath, ...subtitleFiles(entry)]) assertDownloadPath(file);
@@ -267,6 +269,13 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
           await handleFile(req, res, context),
         handleApi: handlePlay,
       });
+      stopCleanup = startCleanup({
+        getDownloads, deleteDownload: (id) => deleteDownload(id, { automatic: true }), sizeOf, isBusy,
+        getSettings: () => ({
+          days: store.getValue(HOUSEHOLD_ID, "downloadCleanupDays") ?? 7,
+          limitGb: store.getValue(HOUSEHOLD_ID, "downloadSpaceLimitGb") ?? 0,
+        }),
+      });
       timer = setInterval(() => {
         streams.sweep();
         resolver.sweep();
@@ -276,6 +285,7 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
       return server;
     },
     async close() {
+      stopCleanup?.();
       clearInterval(timer);
       resolver.close();
       hub.close();
