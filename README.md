@@ -1,11 +1,10 @@
-[![Downloads@latest](https://img.shields.io/github/downloads/truelockmc/streambert/latest/total?style=for-the-badge)](https://codeberg.org/truelockmc/streambert/releases/latest/)
-[![Release Version Badge](https://img.shields.io/github/v/release/truelockmc/streambert?style=for-the-badge)](https://github.com/truelockmc/streambert/releases)
-[![Issues Badge](https://img.shields.io/github/issues/truelockmc/streambert?style=for-the-badge)](https://github.com/truelockmc/streambert/issues)
-[![Closed Issues Badge](https://img.shields.io/github/issues-closed/truelockmc/streambert?color=%238256d0&style=for-the-badge)](https://github.com/truelockmc/streambert/issues?q=is%3Aissue+is%3Aclosed)<br>
+[![Downloads@latest](https://img.shields.io/github/downloads/Awu05/streambert/latest/total?style=for-the-badge)](https://github.com/Awu05/streambert/releases/latest)
+[![Release Version Badge](https://img.shields.io/github/v/release/Awu05/streambert?style=for-the-badge)](https://github.com/Awu05/streambert/releases)
+[![Issues Badge](https://img.shields.io/github/issues/Awu05/streambert?style=for-the-badge)](https://github.com/Awu05/streambert/issues)
+[![Closed Issues Badge](https://img.shields.io/github/issues-closed/Awu05/streambert?color=%238256d0&style=for-the-badge)](https://github.com/Awu05/streambert/issues?q=is%3Aissue+is%3Aclosed)<br>
 
-[![GitHub](https://img.shields.io/badge/GitHub-truelockmc%2Fstreambert-181717?style=for-the-badge&logo=github)](https://github.com/truelockmc/streambert)
-[![Codeberg](https://img.shields.io/badge/Codeberg-truelockmc%2Fstreambert-2185D0?style=for-the-badge&logo=codeberg)](https://codeberg.org/truelockmc/streambert)
-[![AUR Version](https://img.shields.io/aur/version/streambert-bin?style=for-the-badge&logo=archlinux)](https://aur.archlinux.org/packages/streambert-bin)
+[![GitHub](https://img.shields.io/badge/GitHub-Awu05%2Fstreambert-181717?style=for-the-badge&logo=github)](https://github.com/Awu05/streambert)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fawu05%2Fstreambert-2496ED?style=for-the-badge&logo=docker)](docker/README.md)
 # Streambert
 A cross-platform Electron Desktop App to stream and download any Movie, TV Series or Anime in the World. Zero Ads and Tracking[*](#privacy-disclaimer) <br></br>
 <a href="https://trendshift.io/repositories/31115" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/31115" alt="truelockmc%2Fstreambert | Trendshift" width="250" height="55"/></a>
@@ -37,7 +36,7 @@ A cross-platform Electron Desktop App to stream and download any Movie, TV Serie
 [![Stargazers](https://reporoster.com/stars/dark/truelockmc/streambert)](https://github.com/truelockmc/streambert/stargazers)
 ---
 ## Streaming
-The Application gets video streams from different hosters/aggregators, see [PLAYER_SOURCES](src/utils/api.js). <br></br>
+The Application gets video streams from different hosters/aggregators, see the built-in list in [sources.js](src/shared/sources.js). You can edit, add and test sources in **Settings → Sources**. <br></br>
 It fetches Information for Images, Info Texts, Search and Homepage from [tmdb](https://www.themoviedb.org/).
 
 ---
@@ -55,7 +54,7 @@ Media Files for Animes are scraped from AllManga.to (i stole this mechanic from 
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) (>=22.12.0) installed (only if you aren't using [prebuilt Binaries](https://codeberg.org/truelockmc/streambert/releases/latest))
+- [Node.js](https://nodejs.org/) (>=22.12.0) installed (only if you aren't using [prebuilt Binaries](https://github.com/Awu05/streambert/releases/latest))
 - A free TMDB API Read Access Token ([Guide on how to get one](tmdb-tutorial.md))
 - For downloading, [this Program](https://github.com/truelockmc/vid-dl-cli-only/releases/latest) somewhere on your PC and [ffmpeg](https://ffmpeg.org/download.html) installed
 
@@ -64,26 +63,35 @@ Media Files for Animes are scraped from AllManga.to (i stole this mechanic from 
 On first launch you'll be prompted to enter your TMDB API key. ([Guide on how to get one](tmdb-tutorial.md))
 It's saved locally, you only need to do this once.
 
-### Linux, Manual (.deb / .AppImage / .pacman)
+Installers for every platform are attached to each [release](https://github.com/Awu05/streambert/releases/latest). They aren't code-signed, so Windows and macOS warn the first time you open them (see below). Once installed, the app updates itself from new releases.
 
-Download the latest `.deb` `.pacman` or `.AppImage` from the [Releases](https://codeberg.org/truelockmc/streambert/releases/latest) page.
+### Self-hosted web app (Docker)
+
+Run Streambert on a server and use it from any browser, phone or TV. See the [Docker guide](docker/README.md).
+
+### Linux, Manual (.deb / .rpm / .AppImage / .pacman)
+
+Download the latest `.deb`, `.rpm`, `.pacman` or `.AppImage` from the [Releases](https://github.com/Awu05/streambert/releases/latest) page.
 ```bash
 # .deb
 sudo dpkg -i streambert_*.deb
+
+# Fedora / openSUSE (.rpm)
+sudo rpm -i streambert-*.rpm
 
 # Arch Linux (.pacman)
 sudo pacman -U streambert-*.pacman
 
 # .AppImage (you can also do it with Gearlever)
-chmod +x Streambert-x64.AppImage && ./Streambert-x64.AppImage
+chmod +x Streambert-*.AppImage && ./Streambert-*.AppImage
 ```
 
 ### Windows
 
-Download the latest `Streambert Setup *.exe` from the [Releases](https://codeberg.org/truelockmc/streambert/releases/latest) page and run it.
+Download the latest `Streambert.Setup.*.exe` from the [Releases](https://github.com/Awu05/streambert/releases/latest) page and run it. If SmartScreen warns you, choose **More info → Run anyway**.
 
 ### macOS
-Download the latest `Streambert-*-universal.dmg` from the [Releases](https://codeberg.org/truelockmc/streambert/releases/latest) page, open it and drag Streambert to your Applications folder.
+Download the latest `Streambert-*-universal.dmg` from the [Releases](https://github.com/Awu05/streambert/releases/latest) page, open it and drag Streambert to your Applications folder. It runs on Intel and Apple Silicon Macs. The first time, right-click Streambert and choose **Open**.
 
 ---
 
