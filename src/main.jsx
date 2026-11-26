@@ -6,7 +6,11 @@ import "./styles/global.css";
 async function start() {
   if (import.meta.env.MODE === "web") {
     const { initWeb } = await import("./web/init");
-    await initWeb();
+    if ((await initWeb()).needsProfile) {
+      const { default: ProfileGate } = await import("./web/profiles/ProfileGate");
+      ReactDOM.createRoot(document.getElementById("root")).render(<ProfileGate />);
+      return;
+    }
     // i18n picked its language before server storage was ready; apply the saved one.
     const [{ default: i18n, resolveLanguage }, { storage, STORAGE_KEYS }] =
       await Promise.all([import("./i18n"), import("./utils/storage")]);

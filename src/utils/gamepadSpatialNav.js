@@ -64,6 +64,8 @@ function isModalRoot(el) {
 }
 
 function getScopeRoot() {
+  const dialog = document.querySelector("dialog.profile-dialog[open]");
+  if (dialog) return dialog;
   const overlays = Array.from(
     document.querySelectorAll('[class*="overlay"], [class*="backdrop"]'),
   ).filter((el) => isVisible(el) && isModalRoot(el));
