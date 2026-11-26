@@ -3,7 +3,7 @@
 services:
   streambert:
     build: .
-    image: streambert:latest
+    image: ghcr.io/awu05/streambert:latest   # prebuilt; `--build` builds from source
     container_name: streambert
     shm_size: "1gb"          # required for Electron/Chromium
     environment:

@@ -2,7 +2,7 @@
 
 The image runs Streambert as a web app on port 8080. Sign in from a PC, phone, or TV browser. Devices share one library, watch history, and download queue, and can play different videos at the same time.
 
-Images are built for `linux/amd64` and `linux/arm64`.
+Images are published to `ghcr.io/awu05/streambert` for `linux/amd64` and `linux/arm64` whenever a release is tagged.
 
 ## Start
 
@@ -11,7 +11,8 @@ From the repository root, copy the example settings and set a password:
 ```sh
 cp .env.example .env
 # edit .env and set STREAMBERT_PASSWORD
-docker compose up -d --build
+docker compose pull      # use the published image
+docker compose up -d     # (or `docker compose up -d --build` to build from source)
 ```
 
 Open `http://<server-ip>:8080`, sign in, and enter your TMDB read access token if prompted. For access away from home, use Tailscale or a reverse proxy with HTTPS. Keep port 8080 off the public internet.
@@ -51,9 +52,11 @@ The browser sources are VidFast and Aether for movies and TV, VidNest for TV, an
 
 Earlier versions of this image streamed the desktop app with Selkies on port 3001. To move over, open **Settings → Backup & Restore** in the old image and export your data. Stop the old container, start this one with the same `./config` and `./downloads` folders, and import the backup in the browser. The folders carry over saved credentials and the download registry. The backup carries library and watch history.
 
-## Building
+## Releases and building
 
-To build for the machine you're on, `docker compose up -d --build` is enough. To build both architectures and push them to a registry:
+Pushing a tag (or publishing a GitHub release with a new tag) runs `.github/workflows/docker.yml`, which builds both architectures and pushes them to the GitHub Container Registry. A tag like `2.8.0` produces the image tags `2.8.0`, `2.8`, and `latest`. The workflow can also be started by hand from the Actions tab; that builds an image tagged with the branch name.
+
+To build for the machine you're on, `docker compose up -d --build` is enough. To build both architectures and push them to another registry yourself:
 
 ```sh
 docker buildx build --platform linux/amd64,linux/arm64 -t <registry>/streambert:latest --push .
@@ -71,5 +74,5 @@ An ARM64 smoke test on Docker Desktop under QEMU (with an earlier build that sti
 
 ## Notes
 
-- **Updates:** the app's built-in updater doesn't run in the container. Rebuild the image to update; your data in `./config` is kept.
+- **Updates:** the app's built-in updater doesn't run in the container. Run `docker compose pull && docker compose up -d` (or rebuild) to update; your data in `./config` is kept.
 - **Health check:** the container reports healthy once the sign-in page answers.
