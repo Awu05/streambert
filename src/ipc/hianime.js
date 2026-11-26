@@ -730,6 +730,96 @@ const asPosInt = (v, fallback) => {
 
 // ── IPC registration ──────────────────────────────────────────────────────────
 
+async function resolveHiAnime(args = {}, report = () => {}) {
+  try {
+    const title = asString(args.title);
+    if (!title) return { ok: false, error: "Missing title" };
+    const isMovie = args.isMovie === true;
+    const season = asPosInt(args.seasonNumber, 1) || 1;
+    const episodeNumber = asPosInt(args.episodeNumber, 1) || 1;
+    const mode = args.translationType === "dub" ? "dub" : "sub";
+    report("search");
+
+    // 1. AniList season title lookup (S2+ have their own HiAnime entry)
+    const anilistResult = isMovie
+      ? {
+          title,
+          romaji: null,
+          episodes: null,
+          nextTitle: null,
+          nextRomaji: null,
+        }
+      : await anilistSeasonTitle(title, season);
+
+    let searchTitle = anilistResult.title;
+    let adjustedEpisodeNumber = episodeNumber;
+
+    if (
+      !isMovie &&
+      anilistResult.episodes &&
+      episodeNumber > anilistResult.episodes &&
+      anilistResult.nextTitle
+    ) {
+      adjustedEpisodeNumber = episodeNumber - anilistResult.episodes;
+      searchTitle = anilistResult.nextTitle;
+    }
+
+    // 2. Build search candidate list
+    const candidates = [
+      ...new Set([
+        searchTitle,
+        sanitizeTitle(searchTitle),
+        ...(anilistResult.romaji && searchTitle === anilistResult.title
+          ? [anilistResult.romaji]
+          : []),
+        ...(anilistResult.nextRomaji &&
+        searchTitle === anilistResult.nextTitle
+          ? [anilistResult.nextRomaji]
+          : []),
+        title,
+        sanitizeTitle(title),
+      ]),
+    ].filter(Boolean);
+
+    // 3. Search HiAnime (cached per title)
+    const show = await findShow(candidates);
+    if (!show) return { ok: false, error: "No results for: " + searchTitle };
+
+    // 4. Episode list → episode id
+    report("episodes");
+    const episodes = await cachedEpisodes(show.id);
+    if (!episodes.length) {
+      return { ok: false, error: "No episodes found for: " + show.title };
+    }
+    const wantedNumber = isMovie ? "1" : String(adjustedEpisodeNumber);
+    const episode =
+      episodes.find((e) => e.number === wantedNumber) ||
+      episodes.find((e) => parseFloat(e.number) === Number(wantedNumber)) ||
+      (isMovie ? episodes[0] : null);
+    if (!episode) {
+      return { ok: false, error: "Episode " + wantedNumber + " not found" };
+    }
+
+    // 5. Stream (servers → embed → de-obfuscate)
+    report("stream");
+    const stream = await hianimeStream(episode.epId, mode);
+    return {
+      ok: true,
+      url: stream.masterUrl,
+      resolution: stream.resolution,
+      sourceName: SERVER_NAME,
+      isDirectMp4: false,
+      referer: stream.referer,
+      subtitle: stream.subtitle,
+      malId: stream.malId,
+      searchTitle,
+      matchedTitle: show.title,
+    };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e).slice(0, 200) };
+  }
+}
+
 function register() {
   ipcMain.handle("set-player-video", async (_, args = {}) => {
     const url = asString(args.url, 4096);
@@ -760,93 +850,7 @@ function register() {
         // renderer went away, nothing to report to
       }
     };
-    try {
-      const title = asString(args.title);
-      if (!title) return { ok: false, error: "Missing title" };
-      const isMovie = args.isMovie === true;
-      const season = asPosInt(args.seasonNumber, 1) || 1;
-      const episodeNumber = asPosInt(args.episodeNumber, 1) || 1;
-      const mode = args.translationType === "dub" ? "dub" : "sub";
-      report("search");
-
-      // 1. AniList season title lookup (S2+ have their own HiAnime entry)
-      const anilistResult = isMovie
-        ? {
-            title,
-            romaji: null,
-            episodes: null,
-            nextTitle: null,
-            nextRomaji: null,
-          }
-        : await anilistSeasonTitle(title, season);
-
-      let searchTitle = anilistResult.title;
-      let adjustedEpisodeNumber = episodeNumber;
-
-      if (
-        !isMovie &&
-        anilistResult.episodes &&
-        episodeNumber > anilistResult.episodes &&
-        anilistResult.nextTitle
-      ) {
-        adjustedEpisodeNumber = episodeNumber - anilistResult.episodes;
-        searchTitle = anilistResult.nextTitle;
-      }
-
-      // 2. Build search candidate list
-      const candidates = [
-        ...new Set([
-          searchTitle,
-          sanitizeTitle(searchTitle),
-          ...(anilistResult.romaji && searchTitle === anilistResult.title
-            ? [anilistResult.romaji]
-            : []),
-          ...(anilistResult.nextRomaji &&
-          searchTitle === anilistResult.nextTitle
-            ? [anilistResult.nextRomaji]
-            : []),
-          title,
-          sanitizeTitle(title),
-        ]),
-      ].filter(Boolean);
-
-      // 3. Search HiAnime (cached per title)
-      const show = await findShow(candidates);
-      if (!show) return { ok: false, error: "No results for: " + searchTitle };
-
-      // 4. Episode list → episode id
-      report("episodes");
-      const episodes = await cachedEpisodes(show.id);
-      if (!episodes.length) {
-        return { ok: false, error: "No episodes found for: " + show.title };
-      }
-      const wantedNumber = isMovie ? "1" : String(adjustedEpisodeNumber);
-      const episode =
-        episodes.find((e) => e.number === wantedNumber) ||
-        episodes.find((e) => parseFloat(e.number) === Number(wantedNumber)) ||
-        (isMovie ? episodes[0] : null);
-      if (!episode) {
-        return { ok: false, error: "Episode " + wantedNumber + " not found" };
-      }
-
-      // 5. Stream (servers → embed → de-obfuscate)
-      report("stream");
-      const stream = await hianimeStream(episode.epId, mode);
-      return {
-        ok: true,
-        url: stream.masterUrl,
-        resolution: stream.resolution,
-        sourceName: SERVER_NAME,
-        isDirectMp4: false,
-        referer: stream.referer,
-        subtitle: stream.subtitle,
-        malId: stream.malId,
-        searchTitle,
-        matchedTitle: show.title,
-      };
-    } catch (e) {
-      return { ok: false, error: String(e?.message || e).slice(0, 200) };
-    }
+    return resolveHiAnime(args, report);
   });
 
   // Debug helper, only available in development builds
@@ -876,6 +880,7 @@ function register() {
 
 module.exports = {
   register,
+  resolveHiAnime,
   USER_AGENT,
   // exported for tests
   _internal: {

@@ -2,6 +2,9 @@ import { hasCapability, isWebBuild } from "../utils/capabilities";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { UI_LANGUAGES, resolveLanguage } from "../i18n";
+import { setGamepadFocus } from "../utils/gamepadSpatialNav";
+import { SETTINGS_TABS, tabForSection } from "../utils/settingsTabs";
+import SourcesSection from "../components/settings/SourcesSection";
 import UpdateModal from "../components/UpdateModal";
 import {
   storage,
@@ -41,7 +44,7 @@ import {
 } from "../utils/tvRemoteMode";
 
 // ── Custom Select ─────────────────────────────────────────────────────────────
-function SettingsSelect({ value, onChange, options, style }) {
+function SettingsSelect({ value, onChange, options, style, label, invalid }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const selectedLabel =
@@ -63,6 +66,9 @@ function SettingsSelect({ value, onChange, options, style }) {
       {/* Trigger button */}
       <button
         type="button"
+        aria-label={label ? label + ", " + selectedLabel : undefined}
+        aria-expanded={open}
+        aria-invalid={invalid}
         onClick={() => setOpen((o) => !o)}
         style={{
           display: "flex",
@@ -132,13 +138,17 @@ function SettingsSelect({ value, onChange, options, style }) {
           {options.map((o) => {
             const active = String(o.value) === String(value);
             return (
-              <div
+              <button
+                type="button"
                 key={o.value}
-                onMouseDown={() => {
+                onClick={() => {
                   onChange(o.value);
                   setOpen(false);
                 }}
                 style={{
+                  width: "100%",
+                  border: 0,
+                  textAlign: "left",
                   padding: "8px 12px",
                   fontSize: 14,
                   borderRadius: 7,
@@ -158,7 +168,7 @@ function SettingsSelect({ value, onChange, options, style }) {
                 }}
               >
                 {o.label}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -291,10 +301,11 @@ function ConfirmDialog({
   confirmLabel,
   onConfirm,
   onCancel,
+  irreversible = true,
 }) {
   const { t } = useTranslation();
   return (
-    <div
+    <div className="settings-confirm-overlay" role="alertdialog" aria-modal="true" aria-label={title}
       style={{
         position: "fixed",
         inset: 0,
@@ -351,16 +362,15 @@ function ConfirmDialog({
           }}
         >
           {description}
-          <br />
-          <br />
-          <span style={{ color: "var(--red)" }}>
+          {irreversible && <><br /><br /><span style={{ color: "var(--red)" }}>
             {t("settings.common.cannotBeUndone")}
-          </span>
+          </span></>}
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <button
             className="btn btn-ghost"
             style={{ flex: 1 }}
+            data-gamepad-close
             onClick={onCancel}
           >
             {t("settings.common.cancel")}
@@ -385,9 +395,14 @@ function ConfirmDialog({
 }
 
 // ── Toggle Switch ─────────────────────────────────────────────────────────────
-function Toggle({ value, onChange, title }) {
+function Toggle({ value, onChange, title, disabled }) {
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={!!value}
+      aria-label={title}
+      disabled={disabled}
       onClick={() => onChange(!value)}
       title={title}
       style={{
@@ -2626,44 +2641,6 @@ function DiscordRpcSection() {
   );
 }
 
-// ── Section Group Header ─────────────────────────────────────────────────────
-function SectionGroupHeader({ title, subtitle }) {
-  return (
-    <div style={{ marginBottom: 32, marginTop: 4 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-          marginBottom: subtitle ? 6 : 0,
-        }}
-      >
-        <div
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 16,
-            letterSpacing: 2,
-            color: "var(--red)",
-            textTransform: "uppercase",
-            fontWeight: 700,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {title}
-        </div>
-        <div
-          style={{ flex: 1, height: 1, background: "rgba(229,9,20,0.18)" }}
-        />
-      </div>
-      {subtitle && (
-        <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
-          {subtitle}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Section divider ───────────────────────────────────────────────────────────
 function Divider() {
   return (
@@ -2735,6 +2712,7 @@ const SECTION_NAV = [
       "outro",
     ],
   },
+  { id: "sources", labelKey: "settings.nav.sources", icon: "⇄", keywords: ["source", "provider", "embed", "stream"] },
   {
     id: "subtitles",
     labelKey: "settings.nav.subtitles",
@@ -2861,7 +2839,7 @@ const SECTION_NAV = [
   },
 ];
 
-function SettingsTopBar({ sectionRefs, contentRef }) {
+function SettingsTopBar({ sectionRefs, contentRef, selectTab }) {
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
@@ -2891,6 +2869,8 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
 
   const scrollToRange = (range) => {
     if (!range) return;
+    const panel = range.startContainer.parentElement?.closest("[data-settings-tab]");
+    if (panel) selectTab(panel.dataset.settingsTab);
     if (rafHandle.current) cancelAnimationFrame(rafHandle.current);
     rafHandle.current = requestAnimationFrame(() => {
       rafHandle.current = null;
@@ -3055,7 +3035,10 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
 
   const scrollTo = (id) => {
     const el = sectionRefs[id]?.current;
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (el) {
+      selectTab(tabForSection(id));
+      requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
     setNavOpen(false);
   };
 
@@ -3417,7 +3400,7 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
               {SECTION_NAV.filter((section) => hasCapability("discord") || section.id !== "discordRpc").map((s) => (
                 <button
                   key={s.id}
-                  onMouseDown={() => scrollTo(s.id)}
+                  onClick={() => scrollTo(s.id)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -3506,6 +3489,16 @@ export default function SettingsPage({
   const [showDeleteDlConfirm, setShowDeleteDlConfirm] = useState(false);
 
   // ── Section refs for navigation ────────────────────────────────────────────
+  const [tab, setTab] = useState(() => {
+    const savedTab = storage.get(STORAGE_KEYS.SETTINGS_TAB);
+    return tabForSection(initialSection) ?? (SETTINGS_TABS.some(({ id }) => id === savedTab) ? savedTab : "general");
+  });
+  const selectTab = (id) => {
+    setTab(id);
+    storage.set(STORAGE_KEYS.SETTINGS_TAB, id);
+  };
+  const [sourceRevision, setSourceRevision] = useState(0);
+  const secSources = useRef(null);
   const secUpdates = useRef(null);
   const secContent = useRef(null);
   const secPlayback = useRef(null);
@@ -3520,6 +3513,7 @@ export default function SettingsPage({
 
   const sectionRefs = {
     updates: secUpdates,
+    sources: secSources,
     content: secContent,
     playback: secPlayback,
     subtitles: secSubtitles,
@@ -3540,12 +3534,13 @@ export default function SettingsPage({
     if (!initialSection) return;
     const el = sectionRefs[initialSection]?.current;
     if (!el) return;
+    selectTab(tabForSection(initialSection));
     // Small delay so layout is complete before scrolling
     const timer = setTimeout(() => {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 120);
     return () => clearTimeout(timer);
-  }, []);
+  }, [initialSection]);
 
   // Age Rating
   const [ratingCountry, setRatingCountry] = useState(
@@ -3762,7 +3757,7 @@ export default function SettingsPage({
       )}
 
       {/* ── Sticky search & navigation bar ── */}
-      <SettingsTopBar sectionRefs={sectionRefs} contentRef={contentRef} />
+      <SettingsTopBar sectionRefs={sectionRefs} contentRef={contentRef} selectTab={selectTab} />
 
       <div
         ref={contentRef}
@@ -3780,569 +3775,283 @@ export default function SettingsPage({
         >
           {t("settings.page.title")}
         </div>
-        <div style={{ color: "var(--text3)", fontSize: 14, marginBottom: 48 }}>
+        <div style={{ color: "var(--text3)", fontSize: 14, marginBottom: 20 }}>
           {t("settings.page.subtitle")}
         </div>
 
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: GENERAL                                                     */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secUpdates} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.general.title")}
-            subtitle={t("settings.groups.general.subtitle")}
-          />
+        <div className="settings-tabs" role="tablist" aria-label={t("settings.tabs.label")}>
+          {SETTINGS_TABS.map(({ id }, index) => (
+            <button key={id} id={"settings-tab-" + id} type="button" role="tab"
+              className="settings-tab" aria-selected={tab === id} aria-controls={"settings-panel-" + id}
+              onClick={() => selectTab(id)}
+              onKeyDown={(event) => {
+                if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const step = event.key === "ArrowLeft" ? -1 : 1;
+                const next = SETTINGS_TABS[(index + step + SETTINGS_TABS.length) % SETTINGS_TABS.length].id;
+                selectTab(next);
+                setGamepadFocus(document.getElementById("settings-tab-" + next));
+              }}>
+              {t("settings.tabs." + id)}
+            </button>
+          ))}
+        </div>
 
-          {/* Version & Updates */}
-          {hasCapability("updater") && <VersionSection />}
+        <div role="tabpanel" id="settings-panel-general" aria-labelledby="settings-tab-general" data-settings-tab="general" hidden={tab !== "general"}>
+          <div ref={secUpdates} style={{ scrollMarginTop: 80 }}>
 
-          <Divider />
+            {/* Version & Updates */}
+            {hasCapability("updater") && <><VersionSection /><Divider /></>}
 
-          {/* TMDB API Token */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">
-              {t("settings.general.tmdbTitle")}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              {t("settings.general.tmdbDesc")}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <code
+            {/* TMDB API Token */}
+            <div style={{ marginBottom: 40 }}>
+              <div className="settings-section-title">
+                {t("settings.general.tmdbTitle")}
+              </div>
+              <div
                 style={{
                   fontSize: 13,
-                  color: "var(--text2)",
-                  background: "var(--surface2)",
-                  padding: "6px 14px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
+                  color: "var(--text3)",
+                  marginBottom: 16,
+                  lineHeight: 1.6,
                 }}
               >
-                {apiKey
-                  ? apiKey.slice(0, 8) + "••••••••••••••••"
-                  : t("settings.general.notSet")}
-              </code>
-              <button className="btn btn-ghost" onClick={onChangeApiKey}>
-                {t("settings.general.changeToken")}
-              </button>
-            </div>
-          </div>
-
-          <Divider />
-
-          <UiLanguageSection />
-
-          <Divider />
-
-          <TmdbLanguageSection />
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: CONTENT                                                     */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secContent} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.content.title")}
-            subtitle={t("settings.groups.content.subtitle")}
-          />
-
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">
-              {t("settings.content.ageTitle")}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 20,
-                lineHeight: 1.6,
-              }}
-            >
-              <Trans
-                i18nKey="settings.content.ageDescription"
-                components={{
-                  strong: <strong style={{ color: "var(--text)" }} />,
-                  em: <em />,
-                }}
-              />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "var(--text2)",
-                    marginBottom: 8,
-                  }}
-                >
-                  {t("settings.content.ratingCountry")}
-                </div>
-                <SettingsSelect
-                  value={ratingCountry}
-                  onChange={(v) => setRatingCountry(v)}
-                  options={RATING_COUNTRIES.map((c) => ({
-                    value: c.code,
-                    label: c.label,
-                  }))}
-                />
+                {t("settings.general.tmdbDesc")}
               </div>
-
-              <div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "var(--text2)",
-                    marginBottom: 8,
-                  }}
-                >
-                  {t("settings.content.maxAge")}
-                </div>
-                <SettingsSelect
-                  value={ageLimit}
-                  onChange={(v) => setAgeLimit(v)}
-                  options={AGE_LIMIT_OPTIONS.map((o) => ({
-                    value: o.value,
-                    label: t(o.labelKey),
-                  }))}
-                />
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button className="btn btn-primary" onClick={saveAgeSettings}>
-                  {t("settings.common.save")}
-                </button>
-                {ageSaved && (
-                  <span style={{ fontSize: 13, color: "#48c774" }}>
-                    {t("settings.common.savedCheck")}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: PLAYBACK                                                    */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secPlayback} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.playback.title")}
-            subtitle={t("settings.groups.playback.subtitle")}
-          />
-
-          {/* Invidious */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">
-              {t("settings.playback.invidiousTitle")}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              <Trans
-                i18nKey="settings.playback.invidiousDesc"
-                values={{ defaultBase: DEFAULT_INVIDIOUS_BASE }}
-                components={{
-                  hl: <span style={{ color: "var(--text)", fontWeight: 600 }} />,
-                  code: <code style={{ fontSize: 12 }} />,
-                }}
-              />
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <input
-                className="apikey-input"
-                style={{ flex: 1, minWidth: 260, marginBottom: 0 }}
-                placeholder={DEFAULT_INVIDIOUS_BASE}
-                value={invidiousBase}
-                onChange={(e) => {
-                  setInvidiousBase(e.target.value);
-                  setInvidiousStatus(null);
-                }}
-              />
-              <button
-                className="btn btn-ghost"
-                disabled={invidiousChecking}
-                onClick={() => checkInvidious(invidiousBase)}
-                style={{ opacity: invidiousChecking ? 0.5 : 1 }}
-              >
-                {invidiousChecking
-                  ? t("settings.playback.checking")
-                  : t("settings.playback.check")}
-              </button>
-              <button className="btn btn-primary" onClick={saveInvidiousBase}>
-                {t("settings.common.save")}
-              </button>
-            </div>
-
-            {invidiousStatus && (
               <div
                 style={{
                   display: "flex",
+                  gap: 12,
                   alignItems: "center",
-                  gap: 8,
-                  marginTop: 12,
+                  flexWrap: "wrap",
                 }}
               >
-                <div
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    background: invidiousStatus.ok ? "#48c774" : "#ff3860",
-                    boxShadow: invidiousStatus.ok
-                      ? "0 0 6px rgba(72,199,116,0.6)"
-                      : "0 0 6px rgba(255,56,96,0.6)",
-                  }}
-                />
-                <span
+                <code
                   style={{
                     fontSize: 13,
-                    fontWeight: 500,
-                    color: invidiousStatus.ok ? "#48c774" : "#ff3860",
+                    color: "var(--text2)",
+                    background: "var(--surface2)",
+                    padding: "6px 14px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
                   }}
                 >
-                  {invidiousStatus.msg}
-                </span>
+                  {apiKey
+                    ? apiKey.slice(0, 8) + "••••••••••••••••"
+                    : t("settings.general.notSet")}
+                </code>
+                <button className="btn btn-ghost" onClick={onChangeApiKey}>
+                  {t("settings.general.changeToken")}
+                </button>
               </div>
-            )}
+            </div>
 
-            {invidiousSaved && (
-              <div style={{ marginTop: 10, fontSize: 13, color: "#48c774" }}>
-                {t("settings.common.savedCheck")}
-              </div>
-            )}
+            <Divider />
+
+            <UiLanguageSection />
+
+            <Divider />
+
+            <TmdbLanguageSection />
+            <Divider />
+            <StartPageSection />
           </div>
-
           <Divider />
+          <div ref={secNotifications} style={{ scrollMarginTop: 80 }}>
+            <NotificationsSection />
+          </div>
+          {hasCapability("discord") && <>
+            <Divider />
+            <div ref={secDiscordRpc} style={{ scrollMarginTop: 80 }}>
+              <DiscordRpcSection />
+            </div>
+          </>}
+        </div>
 
-          {/* Auto-Watched Threshold */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">
-              {t("settings.playback.thresholdTitle")}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              <Trans
-                i18nKey="settings.playback.thresholdDesc"
-                components={{
-                  ok: <span style={{ color: "#48c774", fontWeight: 600 }} />,
+        <div role="tabpanel" id="settings-panel-playback" aria-labelledby="settings-tab-playback" data-settings-tab="playback" hidden={tab !== "playback"}>
+          <div ref={secPlayback} style={{ scrollMarginTop: 80 }}>
+
+            {/* Invidious */}
+            <div style={{ marginBottom: 40 }}>
+              <div className="settings-section-title">
+                {t("settings.playback.invidiousTitle")}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--text3)",
+                  marginBottom: 16,
+                  lineHeight: 1.6,
                 }}
-              />
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              >
+                <Trans
+                  i18nKey="settings.playback.invidiousDesc"
+                  values={{ defaultBase: DEFAULT_INVIDIOUS_BASE }}
+                  components={{
+                    hl: <span style={{ color: "var(--text)", fontWeight: 600 }} />,
+                    code: <code style={{ fontSize: 12 }} />,
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
                 <input
-                  type="number"
-                  min={1}
-                  max={300}
                   className="apikey-input"
-                  style={{ width: 90, marginBottom: 0 }}
-                  value={watchedThreshold}
-                  onChange={(e) => setWatchedThreshold(e.target.value)}
-                />
-                <span style={{ fontSize: 14, color: "var(--text2)" }}>
-                  {t("settings.playback.seconds")}
-                </span>
-              </div>
-              <button className="btn btn-primary" onClick={handleSaveThreshold}>
-                {t("settings.common.save")}
-              </button>
-            </div>
-            {saved && (
-              <div style={{ marginTop: 10, fontSize: 13, color: "#48c774" }}>
-                {t("settings.common.savedCheck")}
-              </div>
-            )}
-          </div>
-
-          <Divider />
-
-          {/* Autoplay Next Episode */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">
-              {t("settings.playback.autoplayTitle")}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              {t("settings.playback.autoplayDesc")}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Enable/Disable Toggle */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <Toggle
-                  value={autoplayNextEnabled}
-                  onChange={(val) => {
-                    setAutoplayNextEnabled(val);
-                    storage.set(STORAGE_KEYS.AUTOPLAY_NEXT_ENABLED, val);
-                    flash();
+                  style={{ flex: 1, minWidth: 260, marginBottom: 0 }}
+                  placeholder={DEFAULT_INVIDIOUS_BASE}
+                  value={invidiousBase}
+                  onChange={(e) => {
+                    setInvidiousBase(e.target.value);
+                    setInvidiousStatus(null);
                   }}
                 />
-                <div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 500,
-                      color: "var(--text)",
-                    }}
-                  >
-                    {t("settings.playback.enableAutoplay")}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text3)",
-                      marginTop: 2,
-                    }}
-                  >
-                    {t("settings.playback.enableAutoplayDesc")}
-                  </div>
-                </div>
+                <button
+                  className="btn btn-ghost"
+                  disabled={invidiousChecking}
+                  onClick={() => checkInvidious(invidiousBase)}
+                  style={{ opacity: invidiousChecking ? 0.5 : 1 }}
+                >
+                  {invidiousChecking
+                    ? t("settings.playback.checking")
+                    : t("settings.playback.check")}
+                </button>
+                <button className="btn btn-primary" onClick={saveInvidiousBase}>
+                  {t("settings.common.save")}
+                </button>
               </div>
 
-              {autoplayNextEnabled && (
-                <>
-                  {/* Duration input */}
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                      marginTop: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "var(--text2)",
-                      }}
-                    >
-                      {t("settings.playback.countdown")}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text3)",
-                        marginBottom: 4,
-                      }}
-                    >
-                      {t("settings.playback.countdownDesc")}
-                    </div>
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 12 }}
-                    >
-                      <input
-                        type="number"
-                        min={0}
-                        max={60}
-                        className="apikey-input"
-                        style={{ width: 90, marginBottom: 0 }}
-                        value={autoplayNextDuration}
-                        onChange={(e) =>
-                          setAutoplayNextDuration(e.target.value)
-                        }
-                        onBlur={() => {
-                          const num = Math.max(
-                            0,
-                            Math.min(
-                              60,
-                              parseInt(autoplayNextDuration, 10) || 0,
-                            ),
-                          );
-                          setAutoplayNextDuration(num);
-                          storage.set(STORAGE_KEYS.AUTOPLAY_NEXT_DURATION, num);
-                          flash();
-                        }}
-                      />
-                      <span style={{ fontSize: 14, color: "var(--text2)" }}>
-                        {t("settings.playback.seconds")}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Overlay Layout selection */}
-                  <div style={{ marginTop: 16 }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "var(--text2)",
-                        marginBottom: 8,
-                      }}
-                    >
-                      {t("settings.playback.overlayPosition")}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text3)",
-                        marginBottom: 12,
-                      }}
-                    >
-                      {t("settings.playback.overlayDesc")}
-                    </div>
-                    <SettingsSelect
-                      value={autoplayNextLayout}
-                      onChange={(val) => {
-                        setAutoplayNextLayout(val);
-                        storage.set(STORAGE_KEYS.AUTOPLAY_NEXT_LAYOUT, val);
-                        flash();
-                      }}
-                      options={[
-                        { value: "left", label: t("settings.playback.left") },
-                        { value: "right", label: t("settings.playback.right") },
-                      ]}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          <Divider />
-
-          {/* Intro Skip */}
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">
-              {t("settings.playback.introTitle")}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              <Trans
-                i18nKey="settings.playback.introDesc"
-                components={{
-                  hl: <span style={{ color: "var(--text)", fontWeight: 600 }} />,
-                }}
-              />
-            </div>
-            <div
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                padding: "0 16px",
-              }}
-            >
-              {[
-                {
-                  value: "off",
-                  label: t("settings.playback.introOff"),
-                  desc: t("settings.playback.introOffDesc"),
-                },
-                {
-                  value: "auto",
-                  label: t("settings.playback.introAuto"),
-                  desc: t("settings.playback.introAutoDesc"),
-                },
-                {
-                  value: "manual",
-                  label: t("settings.playback.introManual"),
-                  desc: t("settings.playback.introManualDesc"),
-                },
-              ].map(({ value, label, desc }, i, arr) => (
+              {invidiousStatus && (
                 <div
-                  key={value}
-                  onClick={() => {
-                    setIntroSkipMode(value);
-                    storage.set(STORAGE_KEYS.INTRO_SKIP_MODE, value);
-                  }}
                   style={{
                     display: "flex",
-                    alignItems: "flex-start",
-                    gap: 14,
-                    padding: "16px 0",
-                    borderBottom:
-                      i < arr.length - 1 ? "1px solid var(--border)" : "none",
-                    cursor: "pointer",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: 12,
                   }}
                 >
-                  {/* Radio dot */}
                   <div
                     style={{
-                      width: 18,
-                      height: 18,
+                      width: 10,
+                      height: 10,
                       borderRadius: "50%",
-                      border: `2px solid ${introSkipMode === value ? "var(--red)" : "var(--border)"}`,
-                      background:
-                        introSkipMode === value ? "var(--red)" : "transparent",
                       flexShrink: 0,
-                      marginTop: 1,
-                      boxShadow:
-                        introSkipMode === value
-                          ? "0 0 0 3px rgba(229,9,20,0.18)"
-                          : "none",
-                      transition: "all 0.15s",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      background: invidiousStatus.ok ? "#48c774" : "#ff3860",
+                      boxShadow: invidiousStatus.ok
+                        ? "0 0 6px rgba(72,199,116,0.6)"
+                        : "0 0 6px rgba(255,56,96,0.6)",
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: invidiousStatus.ok ? "#48c774" : "#ff3860",
                     }}
                   >
-                    {introSkipMode === value && (
-                      <div
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: "#fff",
-                        }}
-                      />
-                    )}
-                  </div>
-                  <div style={{ flex: 1 }}>
+                    {invidiousStatus.msg}
+                  </span>
+                </div>
+              )}
+
+              {invidiousSaved && (
+                <div style={{ marginTop: 10, fontSize: 13, color: "#48c774" }}>
+                  {t("settings.common.savedCheck")}
+                </div>
+              )}
+            </div>
+
+            <Divider />
+
+            {/* Auto-Watched Threshold */}
+            <div style={{ marginBottom: 40 }}>
+              <div className="settings-section-title">
+                {t("settings.playback.thresholdTitle")}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--text3)",
+                  marginBottom: 16,
+                  lineHeight: 1.6,
+                }}
+              >
+                <Trans
+                  i18nKey="settings.playback.thresholdDesc"
+                  components={{
+                    ok: <span style={{ color: "#48c774", fontWeight: 600 }} />,
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={300}
+                    className="apikey-input"
+                    style={{ width: 90, marginBottom: 0 }}
+                    value={watchedThreshold}
+                    onChange={(e) => setWatchedThreshold(e.target.value)}
+                  />
+                  <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                    {t("settings.playback.seconds")}
+                  </span>
+                </div>
+                <button className="btn btn-primary" onClick={handleSaveThreshold}>
+                  {t("settings.common.save")}
+                </button>
+              </div>
+              {saved && (
+                <div style={{ marginTop: 10, fontSize: 13, color: "#48c774" }}>
+                  {t("settings.common.savedCheck")}
+                </div>
+              )}
+            </div>
+
+            <Divider />
+
+            {/* Autoplay Next Episode */}
+            <div style={{ marginBottom: 40 }}>
+              <div className="settings-section-title">
+                {t("settings.playback.autoplayTitle")}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--text3)",
+                  marginBottom: 16,
+                  lineHeight: 1.6,
+                }}
+              >
+                {t("settings.playback.autoplayDesc")}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* Enable/Disable Toggle */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <Toggle
+                    value={autoplayNextEnabled}
+                    onChange={(val) => {
+                      setAutoplayNextEnabled(val);
+                      storage.set(STORAGE_KEYS.AUTOPLAY_NEXT_ENABLED, val);
+                      flash();
+                    }}
+                  />
+                  <div>
                     <div
                       style={{
                         fontSize: 14,
@@ -4350,316 +4059,562 @@ export default function SettingsPage({
                         color: "var(--text)",
                       }}
                     >
-                      {label}
+                      {t("settings.playback.enableAutoplay")}
                     </div>
                     <div
                       style={{
                         fontSize: 12,
                         color: "var(--text3)",
-                        marginTop: 3,
-                        lineHeight: 1.5,
+                        marginTop: 2,
                       }}
                     >
-                      {desc}
+                      {t("settings.playback.enableAutoplayDesc")}
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: SUBTITLES                                                   */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secSubtitles} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.subtitles.title")}
-            subtitle={t("settings.groups.subtitles.subtitle")}
-          />
-          <SubtitleSettingsSection />
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: DOWNLOADS                                                   */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secDownloads} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.downloads.title")}
-            subtitle={t("settings.groups.downloads.subtitle")}
-          />
-
-          <div style={{ marginBottom: 40 }}>
-            <div className="settings-section-title">
-              {t("settings.downloads.folderTitle")}
-            </div>
-            {isWebBuild() ? <p><code>{downloadPath}</code> is set by the server.</p> : <>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text3)",
-                marginBottom: 16,
-                lineHeight: 1.6,
-              }}
-            >
-              {t("settings.downloads.folderDesc")}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <input
-                className="apikey-input"
-                style={{ flex: 1, minWidth: 260, marginBottom: 0 }}
-                placeholder="/home/you/Movies"
-                value={downloadPath}
-                onChange={(e) => setDownloadPath(e.target.value)}
-              />
-              {isElectron && (
-                <button className="btn btn-secondary" onClick={pickFolder}>
-                  {t("settings.downloads.browse")}
-                </button>
-              )}
-              <button className="btn btn-primary" onClick={handleSavePath}>
-                {t("settings.common.save")}
-              </button>
-            </div>
-            {saved && (
-              <div style={{ marginTop: 10, fontSize: 13, color: "#4caf50" }}>
-                {t("settings.common.savedCheck")}
-              </div>
-            )}
-            {!downloadPath && (
-              <div style={{ marginTop: 10, fontSize: 13, color: "var(--red)" }}>
-                {t("settings.downloads.noFolder")}
-              </div>
-            )}
-            </>}
-          </div>
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: NOTIFICATIONS                                               */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secNotifications} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.notifications.title")}
-            subtitle={t("settings.groups.notifications.subtitle")}
-          />
-          <NotificationsSection />
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: DISCORD RICH PRESENCE                                       */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {hasCapability("discord") && <div ref={secDiscordRpc} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.discordRpc.title")}
-            subtitle={t("settings.groups.discordRpc.subtitle")}
-          />
-          <DiscordRpcSection />
-        </div>}
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: INTERFACE                                                   */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secInterface} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.interface.title")}
-            subtitle={t("settings.groups.interface.subtitle")}
-          />
-          <HomeLayoutSection />
-          <Divider />
-          <StartPageSection />
-          <Divider />
-          <AppearanceSection />
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: LIBRARY                                                     */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secLibrary} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.library.title")}
-            subtitle={t("settings.groups.library.subtitle")}
-          />
-          <LibraryPrivacySection />
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: BACKUP                                                      */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secBackup} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.backup.title")}
-            subtitle={t("settings.groups.backup.subtitle")}
-          />
-          <BackupRestoreSection />
-        </div>
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* GROUP: STORAGE & DATA                                              */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secStorage} style={{ scrollMarginTop: 80 }}>
-          <SectionGroupHeader
-            title={t("settings.groups.storage.title")}
-            subtitle={t("settings.groups.storage.subtitle")}
-          />
-
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              overflow: "hidden",
-            }}
-          >
-            {hasCapability("desktop") && <>
-            {/* Install location */}
-            <div style={{ padding: "22px 24px" }}>
-              <CleanRow
-                title={t("settings.storage.installTitle")}
-                description={t("settings.storage.installDesc")}
-                buttonLabel={t("settings.storage.openFolder")}
-                onAction={async () => {
-                  const p = await window.electron?.getInstallPath?.();
-                  if (p) window.electron.openPath(p);
-                }}
-              />
-            </div>
-
-            <div style={{ height: 1, background: "var(--border)" }} />
-
-            </>}
-            {/* Cache */}
-            <div style={{ padding: "22px 24px" }}>
-              <CleanRow
-                title={t("settings.storage.clearCacheTitle")}
-                description={t("settings.storage.clearCacheDesc")}
-                buttonLabel={t("settings.storage.clearCacheBtn")}
-                onAction={handleClearCache}
-                sizeLabel={formatBytes(sizes.cache)}
-              />
-            </div>
-
-            <div style={{ height: 1, background: "var(--border)" }} />
-
-            {/* Watch Progress */}
-            <div style={{ padding: "22px 24px" }}>
-              <CleanRow
-                title={t("settings.storage.progressTitle")}
-                description={t("settings.storage.progressDesc")}
-                buttonLabel={t("settings.storage.clearProgress")}
-                onAction={() =>
-                  new Promise((resolve) => {
-                    setShowProgressConfirm(true);
-                    window.__progressConfirmResolve = resolve;
-                  })
-                }
-                danger
-              />
-            </div>
-
-            <div style={{ height: 1, background: "var(--border)" }} />
-
-            {/* Delete Downloads */}
-            <div style={{ padding: "22px 24px" }}>
-              <CleanRow
-                title={t("settings.storage.deleteTitle")}
-                description={t("settings.storage.deleteDesc")}
-                buttonLabel={t("settings.storage.deleteAll")}
-                onAction={() =>
-                  new Promise((resolve) => {
-                    setShowDeleteDlConfirm(true);
-                    window.__deleteDlConfirmResolve = resolve;
-                  })
-                }
-                sizeLabel={formatBytes(sizes.downloads)}
-                danger
-              />
-            </div>
-
-            <div style={{ height: 1, background: "var(--border)" }} />
-
-            {hasCapability("desktop") && <div
-              style={{
-                padding: "22px 24px",
-                background: "rgba(229,9,20,0.03)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: 24,
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 600,
-                      color: "var(--text)",
-                      marginBottom: 4,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    {t("settings.storage.resetApp")}
-                    <span
+                {autoplayNextEnabled && (
+                  <>
+                    {/* Duration input */}
+                    <div
                       style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: 1,
-                        color: "var(--red)",
-                        background: "rgba(229,9,20,0.12)",
-                        border: "1px solid rgba(229,9,20,0.25)",
-                        padding: "2px 7px",
-                        borderRadius: 4,
-                        textTransform: "uppercase",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                        marginTop: 8,
                       }}
                     >
-                      {t("settings.storage.irreversible")}
-                    </span>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "var(--text2)",
+                        }}
+                      >
+                        {t("settings.playback.countdown")}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "var(--text3)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        {t("settings.playback.countdownDesc")}
+                      </div>
+                      <div
+                        style={{ display: "flex", alignItems: "center", gap: 12 }}
+                      >
+                        <input
+                          type="number"
+                          min={0}
+                          max={60}
+                          className="apikey-input"
+                          style={{ width: 90, marginBottom: 0 }}
+                          value={autoplayNextDuration}
+                          onChange={(e) =>
+                            setAutoplayNextDuration(e.target.value)
+                          }
+                          onBlur={() => {
+                            const num = Math.max(
+                              0,
+                              Math.min(
+                                60,
+                                parseInt(autoplayNextDuration, 10) || 0,
+                              ),
+                            );
+                            setAutoplayNextDuration(num);
+                            storage.set(STORAGE_KEYS.AUTOPLAY_NEXT_DURATION, num);
+                            flash();
+                          }}
+                        />
+                        <span style={{ fontSize: 14, color: "var(--text2)" }}>
+                          {t("settings.playback.seconds")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Overlay Layout selection */}
+                    <div style={{ marginTop: 16 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "var(--text2)",
+                          marginBottom: 8,
+                        }}
+                      >
+                        {t("settings.playback.overlayPosition")}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "var(--text3)",
+                          marginBottom: 12,
+                        }}
+                      >
+                        {t("settings.playback.overlayDesc")}
+                      </div>
+                      <SettingsSelect
+                        value={autoplayNextLayout}
+                        onChange={(val) => {
+                          setAutoplayNextLayout(val);
+                          storage.set(STORAGE_KEYS.AUTOPLAY_NEXT_LAYOUT, val);
+                          flash();
+                        }}
+                        options={[
+                          { value: "left", label: t("settings.playback.left") },
+                          { value: "right", label: t("settings.playback.right") },
+                        ]}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <Divider />
+
+            {/* Intro Skip */}
+            <div style={{ marginBottom: 40 }}>
+              <div className="settings-section-title">
+                {t("settings.playback.introTitle")}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--text3)",
+                  marginBottom: 16,
+                  lineHeight: 1.6,
+                }}
+              >
+                <Trans
+                  i18nKey="settings.playback.introDesc"
+                  components={{
+                    hl: <span style={{ color: "var(--text)", fontWeight: 600 }} />,
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: "0 16px",
+                }}
+              >
+                {[
+                  {
+                    value: "off",
+                    label: t("settings.playback.introOff"),
+                    desc: t("settings.playback.introOffDesc"),
+                  },
+                  {
+                    value: "auto",
+                    label: t("settings.playback.introAuto"),
+                    desc: t("settings.playback.introAutoDesc"),
+                  },
+                  {
+                    value: "manual",
+                    label: t("settings.playback.introManual"),
+                    desc: t("settings.playback.introManualDesc"),
+                  },
+                ].map(({ value, label, desc }, i, arr) => (
+                  <div
+                    key={value}
+                    onClick={() => {
+                      setIntroSkipMode(value);
+                      storage.set(STORAGE_KEYS.INTRO_SKIP_MODE, value);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 14,
+                      padding: "16px 0",
+                      borderBottom:
+                        i < arr.length - 1 ? "1px solid var(--border)" : "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {/* Radio dot */}
+                    <div
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        border: `2px solid ${introSkipMode === value ? "var(--red)" : "var(--border)"}`,
+                        background:
+                          introSkipMode === value ? "var(--red)" : "transparent",
+                        flexShrink: 0,
+                        marginTop: 1,
+                        boxShadow:
+                          introSkipMode === value
+                            ? "0 0 0 3px rgba(229,9,20,0.18)"
+                            : "none",
+                        transition: "all 0.15s",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {introSkipMode === value && (
+                        <div
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: "#fff",
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 500,
+                          color: "var(--text)",
+                        }}
+                      >
+                        {label}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "var(--text3)",
+                          marginTop: 3,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {desc}
+                      </div>
+                    </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <Divider />
+          <div ref={secSubtitles} style={{ scrollMarginTop: 80 }}>
+            <SubtitleSettingsSection />
+          </div>
+        </div>
+
+        <div role="tabpanel" id="settings-panel-sources" aria-labelledby="settings-tab-sources" data-settings-tab="sources" hidden={tab !== "sources"}>
+          <div ref={secSources} style={{ scrollMarginTop: 80 }}>
+            <SourcesSection Toggle={Toggle} Select={SettingsSelect} ConfirmDialog={ConfirmDialog} revision={sourceRevision} />
+          </div>
+        </div>
+
+        <div role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance" data-settings-tab="appearance" hidden={tab !== "appearance"}>
+          <div ref={secInterface} style={{ scrollMarginTop: 80 }}>
+            <HomeLayoutSection />
+            <Divider />
+            <AppearanceSection />
+          </div>
+        </div>
+
+        <div role="tabpanel" id="settings-panel-library" aria-labelledby="settings-tab-library" data-settings-tab="library" hidden={tab !== "library"}>
+          <div ref={secContent} style={{ scrollMarginTop: 80 }}>
+
+            <div style={{ marginBottom: 40 }}>
+              <div className="settings-section-title">
+                {t("settings.content.ageTitle")}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--text3)",
+                  marginBottom: 20,
+                  lineHeight: 1.6,
+                }}
+              >
+                <Trans
+                  i18nKey="settings.content.ageDescription"
+                  components={{
+                    strong: <strong style={{ color: "var(--text)" }} />,
+                    em: <em />,
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
                   <div
                     style={{
                       fontSize: 13,
-                      color: "var(--text3)",
-                      lineHeight: 1.6,
+                      fontWeight: 600,
+                      color: "var(--text2)",
+                      marginBottom: 8,
                     }}
                   >
-                    {t("settings.storage.resetDesc")}
+                    {t("settings.content.ratingCountry")}
                   </div>
+                  <SettingsSelect
+                    value={ratingCountry}
+                    onChange={(v) => setRatingCountry(v)}
+                    options={RATING_COUNTRIES.map((c) => ({
+                      value: c.code,
+                      label: c.label,
+                    }))}
+                  />
                 </div>
-                <div style={{ flexShrink: 0, paddingTop: 2 }}>
-                  <button
-                    className="btn"
-                    onClick={() => setShowResetConfirm(true)}
-                    onMouseEnter={() => setResetHovered(true)}
-                    onMouseLeave={() => setResetHovered(false)}
+
+                <div>
+                  <div
                     style={{
-                      color: resetHovered ? "#fff" : "var(--red)",
-                      background: resetHovered
-                        ? "rgba(229,9,20,0.85)"
-                        : "rgba(229,9,20,0.08)",
-                      border: resetHovered
-                        ? "1px solid transparent"
-                        : "1px solid rgba(229,9,20,0.3)",
-                      transition: "all 0.2s",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "var(--text2)",
+                      marginBottom: 8,
                     }}
                   >
-                    {t("settings.storage.resetApp")}
+                    {t("settings.content.maxAge")}
+                  </div>
+                  <SettingsSelect
+                    value={ageLimit}
+                    onChange={(v) => setAgeLimit(v)}
+                    options={AGE_LIMIT_OPTIONS.map((o) => ({
+                      value: o.value,
+                      label: t(o.labelKey),
+                    }))}
+                  />
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <button className="btn btn-primary" onClick={saveAgeSettings}>
+                    {t("settings.common.save")}
                   </button>
+                  {ageSaved && (
+                    <span style={{ fontSize: 13, color: "#48c774" }}>
+                      {t("settings.common.savedCheck")}
+                    </span>
+                  )}
                 </div>
               </div>
-            </div>}
+            </div>
+          </div>
+          <Divider />
+          <div ref={secLibrary} style={{ scrollMarginTop: 80 }}>
+            <LibraryPrivacySection />
+          </div>
+        </div>
+
+        <div role="tabpanel" id="settings-panel-downloads" aria-labelledby="settings-tab-downloads" data-settings-tab="downloads" hidden={tab !== "downloads"}>
+          <div ref={secDownloads} style={{ scrollMarginTop: 80 }}>
+
+            <div style={{ marginBottom: 40 }}>
+              <div className="settings-section-title">
+                {t("settings.downloads.folderTitle")}
+              </div>
+              {isWebBuild() ? <p><code>{downloadPath}</code> is set by the server.</p> : <>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--text3)",
+                  marginBottom: 16,
+                  lineHeight: 1.6,
+                }}
+              >
+                {t("settings.downloads.folderDesc")}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <input
+                  className="apikey-input"
+                  style={{ flex: 1, minWidth: 260, marginBottom: 0 }}
+                  placeholder="/home/you/Movies"
+                  value={downloadPath}
+                  onChange={(e) => setDownloadPath(e.target.value)}
+                />
+                {isElectron && (
+                  <button className="btn btn-secondary" onClick={pickFolder}>
+                    {t("settings.downloads.browse")}
+                  </button>
+                )}
+                <button className="btn btn-primary" onClick={handleSavePath}>
+                  {t("settings.common.save")}
+                </button>
+              </div>
+              {saved && (
+                <div style={{ marginTop: 10, fontSize: 13, color: "#4caf50" }}>
+                  {t("settings.common.savedCheck")}
+                </div>
+              )}
+              {!downloadPath && (
+                <div style={{ marginTop: 10, fontSize: 13, color: "var(--red)" }}>
+                  {t("settings.downloads.noFolder")}
+                </div>
+              )}
+              </>}
+            </div>
+          </div>
+        </div>
+
+        <div role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" data-settings-tab="data" hidden={tab !== "data"}>
+          <div ref={secBackup} style={{ scrollMarginTop: 80 }}>
+            <BackupRestoreSection onRestored={() => setSourceRevision((value) => value + 1)} />
+          </div>
+          <Divider />
+          <div ref={secStorage} style={{ scrollMarginTop: 80 }}>
+
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                overflow: "hidden",
+              }}
+            >
+              {hasCapability("desktop") && <>
+              {/* Install location */}
+              <div style={{ padding: "22px 24px" }}>
+                <CleanRow
+                  title={t("settings.storage.installTitle")}
+                  description={t("settings.storage.installDesc")}
+                  buttonLabel={t("settings.storage.openFolder")}
+                  onAction={async () => {
+                    const p = await window.electron?.getInstallPath?.();
+                    if (p) window.electron.openPath(p);
+                  }}
+                />
+              </div>
+
+              <div style={{ height: 1, background: "var(--border)" }} />
+
+              </>}
+              {/* Cache */}
+              <div style={{ padding: "22px 24px" }}>
+                <CleanRow
+                  title={t("settings.storage.clearCacheTitle")}
+                  description={t("settings.storage.clearCacheDesc")}
+                  buttonLabel={t("settings.storage.clearCacheBtn")}
+                  onAction={handleClearCache}
+                  sizeLabel={formatBytes(sizes.cache)}
+                />
+              </div>
+
+              <div style={{ height: 1, background: "var(--border)" }} />
+
+              {/* Watch Progress */}
+              <div style={{ padding: "22px 24px" }}>
+                <CleanRow
+                  title={t("settings.storage.progressTitle")}
+                  description={t("settings.storage.progressDesc")}
+                  buttonLabel={t("settings.storage.clearProgress")}
+                  onAction={() =>
+                    new Promise((resolve) => {
+                      setShowProgressConfirm(true);
+                      window.__progressConfirmResolve = resolve;
+                    })
+                  }
+                  danger
+                />
+              </div>
+
+              <div style={{ height: 1, background: "var(--border)" }} />
+
+              {/* Delete Downloads */}
+              <div style={{ padding: "22px 24px" }}>
+                <CleanRow
+                  title={t("settings.storage.deleteTitle")}
+                  description={t("settings.storage.deleteDesc")}
+                  buttonLabel={t("settings.storage.deleteAll")}
+                  onAction={() =>
+                    new Promise((resolve) => {
+                      setShowDeleteDlConfirm(true);
+                      window.__deleteDlConfirmResolve = resolve;
+                    })
+                  }
+                  sizeLabel={formatBytes(sizes.downloads)}
+                  danger
+                />
+              </div>
+
+              <div style={{ height: 1, background: "var(--border)" }} />
+
+              {hasCapability("desktop") && <div
+                style={{
+                  padding: "22px 24px",
+                  background: "rgba(229,9,20,0.03)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 24,
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 600,
+                        color: "var(--text)",
+                        marginBottom: 4,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      {t("settings.storage.resetApp")}
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          letterSpacing: 1,
+                          color: "var(--red)",
+                          background: "rgba(229,9,20,0.12)",
+                          border: "1px solid rgba(229,9,20,0.25)",
+                          padding: "2px 7px",
+                          borderRadius: 4,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {t("settings.storage.irreversible")}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "var(--text3)",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {t("settings.storage.resetDesc")}
+                    </div>
+                  </div>
+                  <div style={{ flexShrink: 0, paddingTop: 2 }}>
+                    <button
+                      className="btn"
+                      onClick={() => setShowResetConfirm(true)}
+                      onMouseEnter={() => setResetHovered(true)}
+                      onMouseLeave={() => setResetHovered(false)}
+                      style={{
+                        color: resetHovered ? "#fff" : "var(--red)",
+                        background: resetHovered
+                          ? "rgba(229,9,20,0.85)"
+                          : "rgba(229,9,20,0.08)",
+                        border: resetHovered
+                          ? "1px solid transparent"
+                          : "1px solid rgba(229,9,20,0.3)",
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      {t("settings.storage.resetApp")}
+                    </button>
+                  </div>
+                </div>
+              </div>}
+            </div>
           </div>
         </div>
       </div>

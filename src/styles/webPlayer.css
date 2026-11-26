@@ -106,6 +106,7 @@ body.tv-remote .web-player :focus-visible { outline-width: 5px; }
 .web-player-loader { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
 .web-player-status-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; margin-top: .5rem; }
 .web-player-status-actions .btn { text-decoration: none; }
+.web-player-status-sources { display: grid; gap: 6px; max-height: 36vh; overflow: auto; }
 
 /* ── Subtitles (drawn by the player, positioned in WebPlayer.jsx) ────────── */
 .web-player-caption {

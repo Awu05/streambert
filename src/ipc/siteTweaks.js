@@ -1,118 +1,76 @@
-// ── Site tweaks ───────────────────────────────────────────────────────────────
-// Per-host CSS that is injected into the player webview (and the pop-out
-// window) to strip a streaming site down to just its player.
-//
-// Add a new entry to SITE_RULES to tweak another site. `hosts` matches the
-// hostname itself and all its subdomains.
+const { clickFirstScript, sourceHosts, sourcePageCss, validateSource } = require("../shared/sources.js");
 
-// Builds the CSS that hides the whole page except `selector`, which then fills
-// the entire view on a black background.
-function onlyElementCss(selector) {
-  return `
-    html, body {
-      overflow: hidden !important;
-      background: #000 !important;
-    }
-    /* Hide everything ... */
-    body * {
-      visibility: hidden !important;
-    }
-    /* ... except the target element and its content */
-    ${selector},
-    ${selector} * {
-      visibility: visible !important;
-    }
-    /* Let the target fill the whole view */
-    ${selector} {
-      position: fixed !important;
-      inset: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      max-width: none !important;
-      margin: 0 !important;
-      z-index: 2147483647 !important;
-      background: #000 !important;
-      overflow: auto !important;
-    }
-  `;
+const CLICK_RETRY_MS = 500;
+const CLICK_TRIES = 20;
+
+function prepareSourceRules(entry) {
+  const { ok, source } = validateSource(entry);
+  if (!ok) return null;
+  const css = sourcePageCss(source);
+  if (css && css.length > 20000) return null;
+  return { hosts: sourceHosts(source), css, clickFirst: source.clickFirst };
 }
 
-// Builds the CSS that simply hides the given selectors.
-function hideCss(...selectors) {
-  return `${selectors.join(",\n")} { display: none !important; }`;
-}
+const states = new WeakMap();
 
-const SITE_RULES = [
-  {
-    // KinoHub: player picker + player only
-    hosts: ["on.kinohub.vip"],
-    css: onlyElementCss("section.player_section"),
-  },
-  {
-    hosts: ["aether.ist"],
-    css: hideCss(
-      "div:has(> .top-content)",
-      // top bar
-      ".top-content",
-      // Episode selector
-      '[id="__overlayRouter::episodes"]',
-      '[id="__overlayRouter::episodes"] + button',
-      // Back to home button
-      'a.tabbable[class*="cancelHover"]',
-      // Skip to next episode button
-      'button.tabbable.p-2.rounded-full:has(> span.text-xl > svg[width="18"][height="18"])',
-    ),
-  },
-
-  // try to remove popup ads (doesnt really work)
-  {
-    hosts: ["vidnest.fun"],
-    css: hideCss(".popup-selector", "#overlay-id"),
-  },
-  {
-    hosts: ["frembed.uno"],
-    css: hideCss(".popup-selector"),
-  },
-];
-
-function findRule(url) {
-  let host;
+function matches(wc, rules) {
   try {
-    host = new URL(url).hostname;
+    const { hostname } = new URL(wc.getURL());
+    return rules.hosts.some((host) => hostname === host || hostname.endsWith("." + host));
   } catch {
-    return null;
+    return false;
   }
-  return (
-    SITE_RULES.find((rule) =>
-      rule.hosts.some((h) => host === h || host.endsWith("." + h)),
-    ) ?? null
-  );
 }
 
-/**
- * Attach the tweaks to a player webContents (webview or pop-out window).
- * CSS is (re)inserted after every navigation of the main frame.
- */
-function attach(wc) {
-  if (!wc || wc.isDestroyed()) return;
+// Clicks the source's "click first" element once per page, if it's there yet.
+async function clickFirst(wc) {
+  const state = states.get(wc);
+  const selector = state?.rules?.clickFirst;
+  if (!selector || state.clicked || wc.isDestroyed() || !matches(wc, state.rules)) return;
+  state.clicking ??= wc.executeJavaScript(clickFirstScript(selector), true)
+    .then((clicked) => { state.clicked = clicked; }, () => {})
+    .finally(() => { state.clicking = null; });
+  await state.clicking;
+}
 
-  const apply = () => {
-    try {
-      if (wc.isDestroyed()) return;
-      const rule = findRule(wc.getURL());
-      if (!rule) return;
-      // "user" origin: !important beats the site's own !important rules
-      wc.insertCSS(rule.css, { cssOrigin: "user" }).catch(() => {});
-    } catch {}
+// Pages often draw their server list after load, so keep trying for ~10 s.
+function retryClickFirst(wc, state, page) {
+  let tries = 0;
+  const attempt = async () => {
+    if (state.page !== page || wc.isDestroyed()) return;
+    await clickFirst(wc);
+    if (!state.clicked && ++tries < CLICK_TRIES) setTimeout(attempt, CLICK_RETRY_MS);
   };
-
-  // Early (right after the navigation committed) to avoid a visible flash,
-  // plus dom-ready / in-page navigation as fallbacks (SPA route changes).
-  wc.on("did-frame-navigate", (_e, _url, _code, _text, isMainFrame) => {
-    if (isMainFrame) apply();
-  });
-  wc.on("dom-ready", apply);
-  wc.on("did-navigate-in-page", apply);
+  void attempt();
 }
 
-module.exports = { attach, findRule, SITE_RULES };
+function apply(wc, state) {
+  if (!state.rules || wc.isDestroyed() || state.applied === state.page || !matches(wc, state.rules)) return;
+  state.applied = state.page;
+  // "user" origin: !important beats the site's own !important rules
+  if (state.rules.css) wc.insertCSS(state.rules.css, { cssOrigin: "user" }).catch(() => {});
+  if (state.rules.clickFirst) retryClickFirst(wc, state, state.page);
+}
+
+// Sets a player's source rules. They apply as each page commits (before it
+// draws, so hidden parts don't flash) and again at dom-ready as a fallback.
+function setRules(wc, rules) {
+  if (!wc || wc.isDestroyed()) return;
+  let state = states.get(wc);
+  if (!state) {
+    state = { page: 0, applied: -1 };
+    states.set(wc, state);
+    wc.on("did-frame-navigate", (_e, _url, _code, _text, isMainFrame) => {
+      if (!isMainFrame) return;
+      state.page++;
+      state.clicked = false;
+      apply(wc, state);
+    });
+    wc.on("dom-ready", () => apply(wc, state));
+  }
+  const key = JSON.stringify(rules);
+  if (state.key !== key) Object.assign(state, { key, rules, applied: -1, clicked: false });
+  apply(wc, state);
+}
+
+module.exports = { clickFirst, prepareSourceRules, setRules };

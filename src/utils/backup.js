@@ -19,6 +19,7 @@ export const BACKUP_KEYS = [
   "startPage",
   // Player preferences
   "playerSource",
+  "playerSources",
   "hianimeDubMode",
   "introSkipMode",
   // Other Stuff

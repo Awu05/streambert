@@ -1,5 +1,7 @@
 // Finds streams with at most `maxPages` hidden pages open; extra requests queue.
 // Results are cached per provider URL for `cacheMs`.
+const cacheKey = ({ url, cleanUa, clickFirst }) => JSON.stringify([url, Boolean(cleanUa), clickFirst ?? null]);
+
 function createResolver({ maxPages, openPage, timeoutMs = 25000, cacheMs = 600000 }) {
   const queue = [];
   const running = new Set();
@@ -12,10 +14,10 @@ function createResolver({ maxPages, openPage, timeoutMs = 25000, cacheMs = 60000
     try {
       if (signal.aborted) throw signal.reason;
       const aborted = new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        signal.addEventListener("abort", () => setImmediate(() => reject(signal.reason)), { once: true });
       });
       const media = await Promise.race([openPage(job.input, signal), aborted]);
-      resolved.set(job.input.url, { media, expires: Date.now() + cacheMs });
+      if (!job.fresh) resolved.set(cacheKey(job.input), { media, expires: Date.now() + cacheMs });
       job.resolve(media);
     } finally {
       clearTimeout(timeout);
@@ -26,7 +28,7 @@ function createResolver({ maxPages, openPage, timeoutMs = 25000, cacheMs = 60000
     while (running.size < maxPages && queue.length) {
       const job = queue.shift();
       job.onQueue?.(null);
-      const cached = resolved.get(job.input.url);
+      const cached = !job.fresh && resolved.get(cacheKey(job.input));
       if (cached?.expires > Date.now()) {
         job.resolve(cached.media);
         continue;
@@ -52,9 +54,9 @@ function createResolver({ maxPages, openPage, timeoutMs = 25000, cacheMs = 60000
   }
 
   return {
-    resolve(input, { clientId, onQueue } = {}) {
+    resolve(input, { clientId, onQueue, fresh = false } = {}) {
       return new Promise((resolve, reject) => {
-        queue.push({ input, clientId, onQueue, resolve, reject, controller: new AbortController() });
+        queue.push({ input, clientId, onQueue, fresh, resolve, reject, controller: new AbortController() });
         drain();
       });
     },

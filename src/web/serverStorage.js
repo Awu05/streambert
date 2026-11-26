@@ -21,6 +21,7 @@ export function createServerStorage({ initial, fixed = {}, post, batchMs = 200, 
   let data = Object.assign(Object.create(null), structuredClone(initial));
   let pending = [];
   let sending = [];
+  let inFlight;
   let timer;
   let failures = 0;
 
@@ -58,23 +59,34 @@ export function createServerStorage({ initial, fixed = {}, post, batchMs = 200, 
     }
     return result;
   }
-  async function flush() {
-    clearTimeout(timer);
-    timer = undefined;
-    if (sending.length || !pending.length) return;
+  async function sendPending() {
     sending = pending;
     pending = [];
     try {
       await post(combine(sending));
       failures = 0;
+      return true;
     } catch (error) {
       pending.unshift(...sending);
       failures++;
       if (failures === 5) console.warn("Could not sync changes to Streambert:", error.message);
+      return false;
     } finally {
       sending = [];
-      if (pending.length && failures < 5) schedule(failures ? retryMs : batchMs);
     }
+  }
+
+  async function flush() {
+    clearTimeout(timer);
+    timer = undefined;
+    if (inFlight) return await inFlight && flush();
+    if (!pending.length) return true;
+    const request = sendPending();
+    inFlight = request;
+    const success = await request;
+    inFlight = undefined;
+    if (pending.length && failures < 5) schedule(failures ? retryMs : batchMs);
+    return success;
   }
 
   return {
