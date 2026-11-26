@@ -127,3 +127,12 @@
   .settings-content code { white-space: normal; overflow-wrap: anywhere; }
   .settings-content [style*="padding: 22px 24px"] { padding: 16px !important; }
 }
+
+@media (max-width: 768px) {
+  .settings-tabs { margin-inline: calc(-1 * var(--page-pad, 16px)); padding-inline: var(--page-pad, 16px); }
+  .source-row-controls { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .source-description { grid-column: 2; grid-row: 1; }
+  .source-move { grid-column: 3; grid-row: 1; }
+  .source-row-controls .source-actions { grid-column: 2 / -1; grid-row: 2; flex-wrap: wrap; }
+  .source-actions .btn, .source-move .btn { padding-inline: 8px; }
+}
