@@ -14,30 +14,19 @@ let _updateAbortController = null;
 // Same validation logic applies to every entry below, adding a new source
 // means adding a row here, not a new code path.
 //
-// IMPORTANT: GitHub and Codeberg use completely different asset URL structures:
-//   GitHub:   https://github.com/<owner>/<repo>/releases/download/<tag>/<file>
-//   Codeberg: https://codeberg.org/attachments/<uuid>
-//             (Gitea stores release attachments under /attachments/, not under the repo path)
+// GitHub asset URLs: https://github.com/<owner>/<repo>/releases/download/<tag>/<file>
 const TRUSTED_UPDATE_SOURCES = [
   {
     id: "github",
     origin: "https://github.com",
     // Must match the full repo path so an attacker can't use
     // a different repo on github.com to serve a malicious binary.
-    pathPrefix: "/truelockmc/streambert/releases/download/",
+    pathPrefix: "/Awu05/streambert/releases/download/",
     redirectHosts: [
       "github.com",
       "objects.githubusercontent.com",
       "release-assets.githubusercontent.com",
     ],
-  },
-  {
-    id: "codeberg",
-    origin: "https://codeberg.org",
-    // Codeberg (Gitea) release assets are served from /attachments/<uuid>.
-    // The UUID is random and unguessable.
-    pathPrefix: "/attachments/",
-    redirectHosts: ["codeberg.org"],
   },
 ];
 
@@ -535,7 +524,7 @@ function register(getMainWindow, { writeSecretMigration }) {
         return { ok: false, error: "Invalid URL" };
       }
 
-      // Same check for every trusted source (GitHub, Codeberg, ...)
+      // Same check for every trusted source
       // see TRUSTED_UPDATE_SOURCES above.
       const trustedSource = findTrustedUpdateSource(parsed);
       if (!trustedSource) {
@@ -778,11 +767,9 @@ function register(getMainWindow, { writeSecretMigration }) {
   });
 
   // ── Proxy release-note images through the main process ───────────────────
-  // Codeberg (and GitHub) release images are blocked by Electron's renderer
-  // CSP. Fetch them here in the main process and return a base64 data-URI.
+  // GitHub release images are blocked by Electron's renderer CSP. Fetch them here in the main process and return a base64 data-URI.
 
   const ALLOWED_IMAGE_HOSTS = new Set([
-    "codeberg.org",
     "github.com",
     "user-images.githubusercontent.com",
     "private-user-images.githubusercontent.com",

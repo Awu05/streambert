@@ -1,0 +1,90 @@
+# Builds the desktop app for Windows, macOS and Linux when a tag is pushed and
+# attaches the installers to that tag's GitHub release (the in-app updater
+# downloads them from there). Can also be run by hand from the Actions tab.
+name: Desktop app
+
+on:
+  push:
+    tags: ["*"]
+  # Check the packaging still works when it changes.
+  pull_request:
+    paths: [".github/workflows/desktop.yml", "package.json", "package-lock.json"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the installers to (leave empty to only build)
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-${{ github.ref }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+            files: dist/*.exe
+          - os: macos-latest
+            script: dist:mac
+            files: dist/*.dmg
+          - os: ubuntu-latest
+            script: dist:linux
+            files: |
+              dist/*.AppImage
+              dist/*.deb
+              dist/*.rpm
+              dist/*.pacman
+    runs-on: ${{ matrix.os }}
+    env:
+      # No signing certificates: build unsigned instead of looking for one.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # rpm and pacman packages need these tools on the Linux runner.
+      - name: Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm libarchive-tools
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run ${{ matrix.script }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # The release is usually published right after the tag is pushed; create
+      # it from the tag if it doesn't exist by the time the builds finish.
+      - name: Attach installers to the release
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
