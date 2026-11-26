@@ -5,7 +5,8 @@ const { createProfileStore } = require("./profileStore");
 const { startHttpServer } = require("./httpServer");
 const { RpcError, makePathGuard } = require("./ipcRegistry");
 const { authorizePublicUrl } = require("./netGuard");
-const { BROWSER_SOURCES } = require("./browserSources");
+const { loadSources } = require("../shared/sources.js");
+const { createSourceTester } = require("./sourceTest");
 const { createResolver } = require("./resolver");
 const { createStreamRegistry, createStreamHandler, streamLink } = require("./streams");
 const { createPlayHandler } = require("./playRoutes");
@@ -119,7 +120,15 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
     async start(registry) {
       fs.mkdirSync(config.downloadDir, { recursive: true });
       auth = createAuth({ password: config.password, secret: loadOrCreateSecret(path.join(userData, "server-secret")) });
-      const handlePlay = createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUserAgent });
+      const tester = createSourceTester({
+        resolve: (input, { clientId }) => resolver.resolve(input, { clientId, fresh: true }),
+        resolveHianime: (args) => registry.invokeRegistered("resolve-hianime", [args], { send() {} }),
+        hiAnimeUserAgent,
+      });
+      const handlePlay = createPlayHandler({
+        resolver, streams, auth, registry, hub, hiAnimeUserAgent, tester,
+        getSources: () => loadSources(store.getValue("default", "playerSources")),
+      });
       const handleFile = createFileHandler({ getDownloads, isPathAllowed: isDownloadPath, auth });
       const handleStream = createStreamHandler({ streams, auth, authorizeUrl: authorizePublicUrl });
       server = await startHttpServer({
@@ -127,7 +136,7 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
         staticDir: path.join(root, "dist-web"),
         loginHtmlPath: path.join(root, "src/server/login.html"),
         auth, registry, hub, store,
-        bootstrap: () => ({ ...bootstrap(), browserSources: BROWSER_SOURCES, downloadDir: config.downloadDir, downloaderDir }),
+        bootstrap: () => ({ ...bootstrap(), downloadDir: config.downloadDir, downloaderDir }),
         // Streams and downloads accept signed links, so they're handled before sign-in.
         handleStream: async (req, res, context) => await handleStream(req, res, context) ||
           await handleFile(req, res, context),

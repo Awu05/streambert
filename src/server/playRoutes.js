@@ -3,7 +3,7 @@ const https = require("node:https");
 const { randomUUID } = require("node:crypto");
 const { json, readJson } = require("./httpServer");
 const { authorizePublicUrl } = require("./netGuard");
-const { providerRequest } = require("./browserSources");
+const { buildSourceUrl, validateSource, validSubtitleLanguage } = require("../shared/sources.js");
 const { subtitleToVtt } = require("./fileRoutes");
 const { signedStreamPath, streamLink } = require("./streams");
 
@@ -37,7 +37,7 @@ async function fetchSubtitle(value, signal, hops = 0) {
   return subtitleToVtt(text);
 }
 
-function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUserAgent }) {
+function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUserAgent, getSources, tester }) {
   function respond(res, origin, media) {
     const entry = streams.add(media);
     json(res, 200, {
@@ -62,12 +62,44 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
       }
       return true;
     }
-    if (req.method !== "POST" || !url.pathname.startsWith("/api/play/")) return false;
-    const body = await readJson(req);
+    const testing = url.pathname === "/api/sources/test";
+    if (req.method !== "POST" || !(testing || url.pathname.startsWith("/api/play/"))) return false;
+    const body = (await readJson(req)) ?? {};
+    if (testing) {
+      const result = validateSource(body.entry);
+      if (!result.ok) {
+        json(res, 400, { error: "Invalid source", errors: result.errors });
+        return true;
+      }
+      const clientId = "source-test:" + randomUUID();
+      const controller = new AbortController();
+      const onClose = () => {
+        if (res.writableEnded) return;
+        controller.abort();
+        resolver.cancel(clientId);
+      };
+      res.once("close", onClose);
+      try {
+        const subtitleLang = validSubtitleLanguage(body.subtitleLang) ? body.subtitleLang : undefined;
+        const results = await tester.test(result.source, { clientId, signal: controller.signal, subtitleLang });
+        if (!res.destroyed) json(res, 200, results);
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      } finally {
+        res.off("close", onClose);
+      }
+      return true;
+    }
+    const source = getSources().find((entry) => entry.enabled && entry.id === body.sourceId);
     switch (url.pathname) {
       case "/api/play/resolve": {
-        const provider = providerRequest(body.sourceId, body.mediaType, body.url);
-        if (!provider) {
+        const extraParams = source?.langParam && validSubtitleLanguage(body.subtitleLang)
+          ? { [source.langParam]: body.subtitleLang } : undefined;
+        const pageUrl = source && !source.resolver && buildSourceUrl(source, {
+          kind: body.mediaType, id: body.id, season: body.season, episode: body.episode,
+          anilist: body.anilist, lang: body.lang, extraParams,
+        });
+        if (!pageUrl) {
           json(res, 400, { error: "This source is unavailable for this media type" });
           break;
         }
@@ -77,7 +109,9 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
         };
         res.once("close", onClose);
         try {
-          const media = await resolver.resolve(provider, {
+          const media = await resolver.resolve({
+            url: pageUrl, cleanUa: source.cleanUserAgent, clickFirst: source.clickFirst,
+          }, {
             clientId,
             onQueue: (position) => hub.sendTo(body.clientId, "play-queue", { position, requestId: body.requestId }),
           });
@@ -91,6 +125,10 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
         break;
       }
       case "/api/play/hianime": {
+        if (source?.resolver !== "hianime") {
+          json(res, 400, { error: "This source is unavailable for this media type" });
+          break;
+        }
         const result = await registry.invokeRegistered(
           "resolve-hianime", [body.args], hub.clientFor(body.clientId),
         );

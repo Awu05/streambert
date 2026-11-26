@@ -57,6 +57,8 @@ export const STORAGE_KEYS = {
   UI_LANG: "uiLang",
   UPDATE_SOURCE: "updateSource",
   PLAYER_SOURCE: "playerSource",
+  PLAYER_SOURCES: "playerSources",
+  SETTINGS_TAB: "settingsTab",
   HIANIME_DUB_MODE: "hianimeDubMode",
   WATCH_PROGRESS: "progress",
   WATCHED: "watched",

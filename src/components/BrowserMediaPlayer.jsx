@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { PLAYER_SOURCES, getSourceUrl } from "../utils/api";
-import { isSourceAvailableInBrowser } from "../utils/capabilities";
+import { useTranslation } from "react-i18next";
+import { fetchImdbId, fetchKinopoiskId, getEnabledSources, webSourceChoices } from "../utils/api";
 import { recordProgress } from "../utils/progressTracking";
 import { storage, secureStorage, STORAGE_KEYS } from "../utils/storage";
 import { apiRequest, getClientId } from "../web/bridge";
@@ -13,6 +13,7 @@ import WebPlayer from "./WebPlayer";
 // The "Find subtitles" row of the Options panel: searches Wyzie when opened.
 function useSubtitleSearchMenu({ itemId, mediaType, season, episode, onPick }) {
   const [results, setResults] = useState(null);
+  const [showSources, setShowSources] = useState(false);
   const [status, setStatus] = useState("");
   async function search() {
     setStatus("Searching…");
@@ -56,15 +57,20 @@ function useSubtitleSearchMenu({ itemId, mediaType, season, episode, onPick }) {
 let requestNumber = 0;
 
 export default function BrowserMediaPlayer({
-  itemId, title, mediaType, anime, season, episode, dubMode, onDubModeChange,
+  itemId, title, mediaType, anime, anilistId, animeLoading, apiKey, season, episode, dubMode, onDubModeChange,
   accent, progressKey, saveProgress, markWatched, watchedThreshold,
   onClose, onNext, onEnded, overlay, onResolved, onSubtitles, onDownload,
 }) {
-  const choices = PLAYER_SOURCES.filter(({ id }) =>
-    isSourceAvailableInBrowser(id, id === "hianime" ? (anime ? "anime" : mediaType) : mediaType));
-  const selected = storage.get(STORAGE_KEYS.PLAYER_SOURCE);
-  const [source, setSource] = useState(() => choices.some(({ id }) => id === selected) ? selected :
-    (anime ? choices.find(({ id }) => id === "hianime")?.id : null) || choices[0]?.id);
+  const { t } = useTranslation();
+  const kind = anime ? "anime" : mediaType;
+  const rankedSources = webSourceChoices(kind);
+  const choices = rankedSources.filter((entry) => kind !== "anime" || entry.resolver || anilistId);
+  const [preferred, setPreferred] = useState(() => storage.get(STORAGE_KEYS.PLAYER_SOURCE));
+  const selected = choices.find(({ id }) => id === preferred);
+  const waitingForAnime = kind === "anime" && animeLoading && !anilistId &&
+    (!choices.length || rankedSources.some((entry) => entry.id === preferred && entry.animeUrl));
+  const active = waitingForAnime ? undefined : selected ?? choices[0];
+  const source = active?.id;
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState({ mode: "loading" });
   const [customTracks, setCustomTracks] = useState([]);
@@ -72,10 +78,14 @@ export default function BrowserMediaPlayer({
   const savedPosition = () => storage.get("dlTime_" + progressKey) || 0;
   const progressStart = useRef(savedPosition());
   const statusPanel = useRef(null);
-  const hianime = source === "hianime";
+  const hianime = active?.resolver === "hianime";
+  const idType = active?.idType;
+  const animeAudio = kind === "anime" ? dubMode : undefined;
+  const selectedAnilistId = kind === "anime" && !hianime ? anilistId : null;
+  const subtitleLang = storage.get(STORAGE_KEYS.SUBTITLE_LANG);
   useEffect(() => {
-    statusPanel.current?.querySelector(status.mode === "error" ? ".btn-primary" : "button")?.focus();
-  }, [status.mode]);
+    statusPanel.current?.querySelector(status.mode === "error" && source ? ".btn-primary" : "button")?.focus();
+  }, [status.mode, source]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -88,34 +98,45 @@ export default function BrowserMediaPlayer({
     onSubtitles?.([]);
     setCustomTracks([]);
     setStatus({ mode: "loading" });
-    const payload = hianime ? {
-      clientId,
-      args: { title, seasonNumber: season || 1, episodeNumber: episode || 1, isMovie: mediaType === "movie", translationType: dubMode },
-    } : {
-      sourceId: source, mediaType, requestId, clientId,
-      url: getSourceUrl(source, mediaType, itemId, season, episode),
-    };
-    if (source) apiRequest(hianime ? "/api/play/hianime" : "/api/play/resolve", payload, { signal: controller.signal })
-      .then((stream) => {
-        if (controller.signal.aborted) return;
-        onResolved?.(stream.src);
-        onSubtitles?.(stream.subtitles.map(({ src, lang }) => ({ url: src, lang })));
-        setStatus({ mode: "ready", stream });
-      }).catch((error) => {
-        if (!controller.signal.aborted) setStatus({ mode: "error", message: error.message });
-      });
-    else setStatus({ mode: "error", message: "No browser source is available for this title." });
+    async function resolve() {
+      if (waitingForAnime) return;
+      if (!source) {
+        setStatus({ mode: "error", message: t("player.noSource") });
+        return;
+      }
+      const payload = { sourceId: source, mediaType: kind, requestId, clientId, subtitleLang };
+      if (hianime) {
+        payload.args = { title, seasonNumber: season || 1, episodeNumber: episode || 1,
+          isMovie: mediaType === "movie", translationType: animeAudio };
+      } else if (kind === "anime") {
+        Object.assign(payload, { anilist: selectedAnilistId, episode: episode || 1, lang: animeAudio === "dub" ? "dub" : "sub" });
+      } else {
+        const fetchId = idType === "imdb" ? fetchImdbId : idType === "kinopoisk" ? fetchKinopoiskId : null;
+        const id = fetchId ? await fetchId(mediaType, itemId, apiKey) : itemId;
+        Object.assign(payload, { id, season, episode });
+      }
+      if (controller.signal.aborted) return;
+      const stream = await apiRequest(hianime ? "/api/play/hianime" : "/api/play/resolve", payload, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      onResolved?.(stream.src);
+      onSubtitles?.(stream.subtitles.map(({ src, lang }) => ({ url: src, lang })));
+      setStatus({ mode: "ready", stream });
+    }
+    void resolve().catch((error) => {
+      if (!controller.signal.aborted) setStatus({ mode: "error", message: error.message });
+    });
     return () => {
       controller.abort();
       window.electron.offPlayQueue(handle);
     };
-    // dubMode only changes what HiAnime returns, so other sources ignore it.
-  }, [itemId, title, mediaType, season, episode, source, hianime && dubMode, attempt, onResolved, onSubtitles]);
+  }, [itemId, title, mediaType, kind, season, episode, source, idType, hianime, animeAudio,
+    selectedAnilistId, waitingForAnime, subtitleLang, apiKey, attempt, onResolved, onSubtitles, t]);
 
   function changeSource(value) {
     if (source === value) return;
     progressStart.current = savedPosition();
-    setSource(value);
+    setShowSources(false);
+    setPreferred(value);
     storage.set(STORAGE_KEYS.PLAYER_SOURCE, value);
   }
   function retry() {
@@ -128,7 +149,8 @@ export default function BrowserMediaPlayer({
     onPick: (track) => setCustomTracks((current) => [...current.filter(({ src }) => src !== track.src), track]),
   });
   const externalMenu = useExternalPlayerMenu(status.stream?.external, status.stream?.kind);
-  const sourceLabel = (id) => PLAYER_SOURCES.find((entry) => entry.id === id)?.label || id;
+  const sourceLabel = active?.label;
+  const sourceStatus = (entry) => t("player.sourceStatus." + entry.web[kind]);
 
   if (status.mode === "ready") {
     const { stream } = status;
@@ -139,17 +161,13 @@ export default function BrowserMediaPlayer({
     ];
     const menus = [
       {
-        id: "source", label: "Source", value: sourceLabel(source),
-        // Working sources first, then the ones the browser build can't play.
-        items: [...choices, ...PLAYER_SOURCES.filter((entry) => !choices.includes(entry))].map(({ id, label }) => {
-          const available = choices.some((entry) => entry.id === id);
-          return {
-            key: id, label, selected: id === source, disabled: !available,
-            detail: available ? undefined : "Not available in the browser", onSelect: () => changeSource(id),
-          };
-        }),
+        id: "source", label: t("player.source"), value: sourceLabel,
+        items: choices.map((entry) => ({
+          key: entry.id, label: entry.label, selected: entry.id === source,
+          detail: sourceStatus(entry), onSelect: () => changeSource(entry.id),
+        })),
       },
-      hianime && {
+      kind === "anime" && {
         id: "audio", label: "Audio", value: dubMode === "dub" ? "Dub" : "Sub",
         items: [["sub", "Subtitled (Japanese audio)"], ["dub", "Dubbed (English audio)"]].map(([mode, label]) => ({
           key: mode, label, selected: dubMode === mode, onSelect: () => onDubModeChange?.(mode),
@@ -167,7 +185,9 @@ export default function BrowserMediaPlayer({
       menus={menus} />, document.body);
   }
 
-  const next = choices.length > 1 && choices[(choices.findIndex(({ id }) => id === source) + 1) % choices.length];
+  const ordered = getEnabledSources().filter(({ id }) => choices.some((choice) => choice.id === id));
+  const currentIndex = ordered.findIndex(({ id }) => id === source);
+  const next = ordered.length > 1 && ordered[(currentIndex + 1) % ordered.length];
   const failed = status.mode === "error";
   return createPortal(
     <div className="web-player web-player-status web-player-overlay" ref={statusPanel} role="dialog" aria-label={title}
@@ -180,21 +200,29 @@ export default function BrowserMediaPlayer({
       <h2 className="web-player-title">{title}</h2>
       {failed ? <>
         <p className="web-player-status-message" role="alert">{status.message}</p>
-        <p className="web-player-status-source">Source: {sourceLabel(source)}</p>
+        {sourceLabel && <p className="web-player-status-source">{t("player.source")}: {sourceLabel}</p>}
         {status.detail && <p className="web-player-status-detail">{status.detail}</p>}
       </> : hianime && !status.position ? (
         <div className="web-player-loader"><HiAnimeLoader what={mediaType === "movie" ? "movie" : "episode"} /></div>
       ) : <>
         <div className="spinner" />
         <p className="web-player-status-message" role="status">
-          {status.position ? `Waiting for a free slot (${status.position} ahead)…` : `Finding the stream on ${sourceLabel(source)}…`}
+          {status.position ? `Waiting for a free slot (${status.position} ahead)…` : `Finding the stream on ${sourceLabel ?? ""}…`}
         </p>
       </>}
       <div className="web-player-status-actions">
-        {failed && <button className="btn btn-primary" onClick={retry}>Retry</button>}
-        {failed && next && <button className="btn btn-secondary" onClick={() => changeSource(next.id)}>Try {next.label}</button>}
+        {failed && source && <button className="btn btn-primary" onClick={retry}>Retry</button>}
+        {failed && next && <button className="btn btn-secondary" onClick={() => changeSource(next.id)}>{t("player.trySource", { source: next.label })}</button>}
+        {failed && choices.length > 1 && <button type="button" className="btn btn-ghost" aria-expanded={showSources}
+          onClick={() => setShowSources(!showSources)}>{t("player.source")}</button>}
         <button className="btn btn-ghost" onClick={onClose} data-gamepad-close>{failed ? "Close" : "Cancel"}</button>
       </div>
+      {failed && showSources && <div className="web-player-status-sources">
+        {choices.map((entry) => <button type="button" className="btn btn-secondary" key={entry.id}
+          aria-pressed={entry.id === source} onClick={() => changeSource(entry.id)}>
+          {entry.label} · {sourceStatus(entry)}
+        </button>)}
+      </div>}
     </div>, document.body,
   );
 }

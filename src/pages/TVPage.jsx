@@ -19,15 +19,15 @@ import {
 import {
   tmdbFetch,
   imgUrl,
-  PLAYER_SOURCES,
+  findSource,
+  getEnabledSources,
+  pickSource,
   getSourceUrl,
   sourceSupportsProgress,
   sourceSkipsResetGuard,
   sourceProgressViaFrames,
   sourceIsAsync,
   sourceSupportsAnime,
-  sourceIsAnimeCapable,
-  sourceIsMovieOnly,
   getAnimeSourceUrl,
   fetchAnilistData,
   fetchEpisodeGroup,
@@ -36,7 +36,7 @@ import {
   isAnimeContent,
   ANIME_DEFAULT_SOURCE,
   NON_ANIME_DEFAULT_SOURCE,
-  NEEDS_INTERCEPT,
+  sourceInterceptsFullscreen,
   CLEAN_USER_AGENT,
   sourceUsesCleanUa,
   getNextNonAsyncSource,
@@ -85,6 +85,7 @@ import {
   GAMEPAD_EXIT_RESET_JS,
   GAMEPAD_CLEANUP_JS,
 } from "../utils/playerGamepadScript";
+import { useSourceRules } from "../utils/useSourceRules";
 import { useSourceId } from "../utils/useSourceId";
 import { setPlayerGamepadActive } from "../utils/gamepadPlayerState";
 import { useTvRemoteMode } from "../utils/tvRemoteMode";
@@ -458,7 +459,8 @@ export default function TVPage({
   const [m3u8Url, setM3u8Url] = useState(null);
   const [interceptedSubs, setInterceptedSubs] = useState([]);
   const [playerSource, setPlayerSource] = useState(
-    () => storage.get("playerSource") || NON_ANIME_DEFAULT_SOURCE,
+    () => pickSource(storage.get(STORAGE_KEYS.PLAYER_SOURCE) || NON_ANIME_DEFAULT_SOURCE,
+      (source) => Boolean(source.tvUrl))?.id ?? null,
   );
   // Accent colour + subtitle lang come from App-level state (via props),
   // so they are always fresh after Settings save without any extra storage reads.
@@ -514,6 +516,7 @@ export default function TVPage({
   const sourceRef = useRef(null);
   const playerWrapRef = useRef(null);
   const webviewRef = useRef(null);
+  const attachSourceRules = useSourceRules(webviewRef, playerSource);
   // Always-current refs for interval callbacks, avoids stale closures without restarting the interval
   const saveProgressRef = useRef(saveProgress);
   saveProgressRef.current = saveProgress;
@@ -730,7 +733,7 @@ export default function TVPage({
     dubMode,
   ]);
 
-  // Fetch AniList metadata + auto-set anime source
+  // Fetch AniList metadata for the current title.
   useEffect(() => {
     let mounted = true;
     setAnilistData(null);
@@ -750,36 +753,22 @@ export default function TVPage({
         .catch(() => {
           if (mounted) setAnilistLoading(false);
         });
-      // Switch to anime source if current source is not an anime source
-      // (anime-only tagged sources and anime-capable ones like Vidnest are fine)
-      if (!sourceIsAnimeCapable(playerSource)) {
-        const saved = storage.get("playerSource");
-        setPlayerSource(
-          sourceIsAnimeCapable(saved) ? saved : ANIME_DEFAULT_SOURCE,
-        );
-      }
     } else {
       setAnilistLoading(false);
-      // Switch back to non-anime source if current source is anime-only
-      const currentSrc = PLAYER_SOURCES.find((s) => s.id === playerSource);
-      if (currentSrc?.tag) {
-        const saved = storage.get("playerSource");
-        const savedSrc = PLAYER_SOURCES.find((s) => s.id === saved);
-        setPlayerSource(!savedSrc?.tag ? saved : NON_ANIME_DEFAULT_SOURCE);
-      }
     }
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [item.id, isAnime]);
 
-  // Movie-only sources (e.g. KinoHub) can't play series -> fall back to the
-  // default source for this page (the saved choice is kept for the movie page)
+  const sourceCanPlay = (source) => Boolean(source.tvUrl || (isAnime && (source.resolver || source.animeUrl)));
   useEffect(() => {
-    if (sourceIsMovieOnly(playerSource)) {
-      setPlayerSource(NON_ANIME_DEFAULT_SOURCE);
-    }
-  }, [playerSource]);
+    if (isWebBuild()) return;
+    const preferred = storage.get(STORAGE_KEYS.PLAYER_SOURCE);
+    const defaultId = isAnime ? ANIME_DEFAULT_SOURCE : NON_ANIME_DEFAULT_SOURCE;
+    const animeChoices = (source) => Boolean(source.resolver || source.animeUrl);
+    const next = (isAnime && pickSource(preferred || defaultId, animeChoices)) ||
+      pickSource(preferred || defaultId, sourceCanPlay);
+    setPlayerSource(next?.id ?? null);
+  }, [item.id, isAnime]);
 
   // Resolve HiAnime episode URL via main-process IPC (scraping, no CORS)
   useEffect(() => {
@@ -791,7 +780,7 @@ export default function TVPage({
     // this episode, skip straight to the cached fallback source.
     if (isAsync) {
       const cached = getFailoverSource(epKey);
-      if (cached && cached !== playerSource) {
+      if (cached && cached !== playerSource && getEnabledSources().some((source) => source.id === cached && sourceCanPlay(source))) {
         setM3u8Url(null);
         setInterceptedSubs([]);
         resolvedPlayerUrlRef.current = null;
@@ -849,7 +838,7 @@ export default function TVPage({
         } else {
           // HiAnime doesn't have this episode → switch to the next source
           // automatically and remember the choice for next time.
-          const next = getNextNonAsyncSource(playerSource);
+          const next = getNextNonAsyncSource(playerSource, sourceCanPlay);
           if (next) {
             setFailoverSource(epKey, next);
             setM3u8Url(null);
@@ -1064,6 +1053,8 @@ export default function TVPage({
     playerAccentColor,
     playerSubLang,
   ]);
+
+  const noSourceAddress = !playerSource || (!isAsync && !playerDirectUrl && !srcId.loading && !srcId.error && !anilistLoading);
 
   // ── Memoized current season episodes ──────────────────────────────────────
   // While episode group or AniList data is still loading, return [] to prevent
@@ -1733,7 +1724,7 @@ export default function TVPage({
   // Videasy and HiAnime handle fullscreen internally via CSS, skip those.
   useEffect(() => {
     if (!playing) return;
-    if (!NEEDS_INTERCEPT.includes(playerSource)) return;
+    if (!sourceInterceptsFullscreen(playerSource)) return;
     const enterH = window.electron?.onWebviewEnterFullscreen?.(() => {
       // requestFullscreen() is rejected when Electron is already in fullscreen -> use css overlay
       setPlayerFullscreen(true);
@@ -1905,7 +1896,9 @@ export default function TVPage({
 
           {isWebBuild() && playing && selectedEp && !restricted && (
             <Suspense fallback={null}><BrowserMediaPlayer key={`tv_${item.id}_s${selectedSeason}e${selectedEp.episode_number}`}
-              itemId={item.id} title={title} mediaType="tv" anime={isAnime}
+              itemId={item.id} title={title} mediaType="tv" anime={isAnime} apiKey={apiKey}
+              anilistId={anilistSeasons?.find((season) => season.seasonNum === selectedSeason)?.id ?? anilistData?.id}
+              animeLoading={anilistLoading}
               season={selectedSeason} episode={selectedEp.episode_number} dubMode={dubMode} accent={playerAccentColor}
               progressKey={`tv_${item.id}_s${selectedSeason}e${selectedEp.episode_number}`}
               saveProgress={saveProgress} markWatched={onMarkWatched} watchedThreshold={watchedThreshold}
@@ -1962,7 +1955,8 @@ export default function TVPage({
                 ref={playerWrapRef}
               >
                 {/* Universal source-loading overlay, shown instantly on every source/episode switch */}
-                {webviewLoading && !resolveError && (
+                {noSourceAddress && <p className="player-no-source" role="alert">{t("player.noSource")}</p>}
+                {!noSourceAddress && webviewLoading && !resolveError && (
                   <div
                     style={{
                       position: "absolute",
@@ -1988,7 +1982,7 @@ export default function TVPage({
                         <span style={{ fontSize: 14, color: "var(--text2)" }}>
                           {t("tv.player.loadingSource", {
                             source:
-                              PLAYER_SOURCES.find((s) => s.id === playerSource)
+                              findSource(playerSource)
                                 ?.label ?? t("tv.player.sourceFallback"),
                           })}
                         </span>
@@ -2275,12 +2269,10 @@ export default function TVPage({
                   </div>
                 )}
                 <webview
-                  ref={webviewRef}
+                  ref={attachSourceRules}
                   // A fresh guest per UA mode: loadURL's userAgent override sticks
                   // to the WebContents, so it can't be unset on a reused webview.
-                  key={
-                    sourceUsesCleanUa(playerSource) ? "ua-clean" : "ua-default"
-                  }
+                  key={playerSource}
                   useragent={
                     sourceUsesCleanUa(playerSource)
                       ? CLEAN_USER_AGENT
@@ -2326,7 +2318,7 @@ export default function TVPage({
                     title={t("tv.player.changeSource")}
                   >
                     <SourceIcon />
-                    {PLAYER_SOURCES.find((s) => s.id === playerSource)?.label ??
+                    {findSource(playerSource)?.label ??
                       t("tv.player.source")}
                   </button>
                   {/* Sub/Dub toggle: HiAnime, and anime-capable sources (Vidnest) on anime titles */}
@@ -2384,6 +2376,7 @@ export default function TVPage({
                         sourceUsesCleanUa(playerSource)
                           ? CLEAN_USER_AGENT
                           : null,
+                        findSource(playerSource),
                       );
                     }}
                     title={pipOpen ? t("tv.player.closePopout") : t("tv.player.popOutPlayer")}
@@ -2402,7 +2395,7 @@ export default function TVPage({
                     style={{ top: menuPos.top, left: menuPos.left }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {PLAYER_SOURCES.filter((src) => !src.movieOnly).map(
+                    {getEnabledSources().filter(sourceCanPlay).map(
                       (src) => (
                         <button
                           key={src.id}

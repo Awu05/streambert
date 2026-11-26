@@ -41,7 +41,110 @@
     "alltime_one": "All-time: <strong>{{formatted}} ad & tracker request</strong> blocked",
     "alltime_other": "All-time: <strong>{{formatted}} ad & tracker requests</strong> blocked"
   },
+  "player": {
+    "noSource": "No source is available for this title.",
+    "source": "Source",
+    "trySource": "Try {{source}}",
+    "sourceStatus": {
+      "works": "Works",
+      "untested": "Not tested",
+      "failed": "Didn't work in a test"
+    }
+  },
   "settings": {
+    "tabs": {
+      "general": "General",
+      "playback": "Playback",
+      "sources": "Sources",
+      "appearance": "Appearance",
+      "library": "Library",
+      "downloads": "Downloads",
+      "data": "Data",
+      "label": "Settings sections"
+    },
+    "sources": {
+      "add": "Add source",
+      "addBuiltIn": "Add",
+      "newName": "New source",
+      "newBuiltIn": "Built-in source available: {{source}}",
+      "enable": "Use {{source}}",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "test": "Test",
+      "testing": "Testing…",
+      "testingStatus": "Checking stream capture and playback…",
+      "edit": "Edit",
+      "close": "Close editor",
+      "advanced": "Advanced",
+      "delete": "Delete source",
+      "confirmDelete": "Remove this source from the list?",
+      "reset": "Reset to defaults",
+      "confirmReset": "Replace your sources with the built-in list? Your added sources will be removed.",
+      "saved": "Saved",
+      "save": "Save",
+      "saveError": "Could not save sources. Try again.",
+      "testError": "Could not run the source test.",
+      "kind": {
+        "movie": "Movies",
+        "tv": "Episodes",
+        "anime": "Anime"
+      },
+      "field": {
+        "label": "Name",
+        "movieUrl": "Movie address",
+        "tvUrl": "Episode address",
+        "animeUrl": "Anime address",
+        "idType": "Title ID",
+        "tmdb": "TMDB",
+        "imdb": "IMDb",
+        "kinopoisk": "Kinopoisk",
+        "params": "Query settings",
+        "paramKey": "Parameter name",
+        "paramValue": "Parameter value",
+        "addParam": "Add setting",
+        "removeParam": "Remove setting",
+        "cleanUserAgent": "Use a plain browser user agent",
+        "clickFirst": "Click this selector first",
+        "colorParam": "Accent colour parameter",
+        "colorWithHash": "Include # in the accent colour",
+        "langParam": "Subtitle language parameter",
+        "progress": "Progress tracking",
+        "none": "None",
+        "page": "Page",
+        "frames": "Frames",
+        "skipResetGuard": "Skip the progress reset guard",
+        "interceptFullscreen": "Intercept fullscreen",
+        "hideCss": "Hide parts of the page",
+        "onlyElement": "Show only this selector"
+      },
+      "help": {
+        "movieUrl": "Use {id} for the title ID.",
+        "tvUrl": "Use {id}, {season} and {episode}.",
+        "animeUrl": "Use {anilist}, {episode} and {lang}.",
+        "hideCss": "Enter one CSS selector per line."
+      },
+      "error": {
+        "invalidEntry": "Enter valid source details.",
+        "invalidId": "The source ID is invalid.",
+        "invalidLabel": "Enter a name of up to 40 characters.",
+        "missingUrl": "Add a movie, episode or anime address.",
+        "invalidUrl": "Enter an HTTPS address using the supported placeholders.",
+        "invalidOption": "Choose a valid option.",
+        "invalidText": "Enter up to 200 characters.",
+        "invalidParams": "Use unique parameter names with up to 40 letters, numbers, dots, dashes or underscores. Values can have up to 200 characters.",
+        "invalidSelectors": "Enter CSS selectors of up to 200 characters each.",
+        "duplicateId": "This source is already in the list."
+      },
+      "reason": {
+        "no stream found": "No stream found",
+        "provider requires verification": "Provider requires verification",
+        "found DASH, not supported": "Found DASH, which playback does not support",
+        "timed out": "Timed out",
+        "no address for this title": "No address for this test title",
+        "refused": "Stream refused replay ({{status}})",
+        "networkError": "network error"
+      }
+    },
     "uiLanguage": {
       "title": "Interface Language",
       "description": "Language of the app's menus and buttons. This is separate from the metadata language below, which controls titles and descriptions from TMDB.",
@@ -125,6 +228,7 @@
       "subtitle": "App configuration for Streambert"
     },
     "nav": {
+      "sources": "Sources",
       "updates": "Updates & API",
       "content": "Age Rating",
       "playback": "Playback",

@@ -309,10 +309,11 @@ function buildCleanUserAgent() {
     .trim();
 }
 
+const { createHiddenPageCapture } = require("./src/server/hiddenPage");
+
 if (serverConfig.enabled) {
   const { createEventHub, createWindowStub } = require("./src/server/events");
   const { captureIpc, makePathGuard } = require("./src/server/ipcRegistry");
-  const { createHiddenPageCapture } = require("./src/server/hiddenPage");
   const { createServerRuntime } = require("./src/server/runtime");
   const userData = app.getPath("userData");
   const hub = createEventHub();
@@ -562,6 +563,47 @@ function setupSession(playerSession, trailerSession) {
   setYoutubeConsentCookies(trailerSession);
 }
 
+function setupSourceTesting() {
+  const { validateSource, validSubtitleLanguage } = require("./src/shared/sources.js");
+  const { createResolver } = require("./src/server/resolver");
+  const { createSourceTester } = require("./src/server/sourceTest");
+  const partition = "source-test";
+  const capture = createHiddenPageCapture({
+    BrowserWindow, clickPlayDeep: remoteKeys.clickPlayDeep, buildCleanUserAgent,
+    extractSubtitleLang: subtitlesIpc.extractSubtitleLang, partition,
+  });
+  const testSession = session.fromPartition(partition);
+  testSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  testSession.setPermissionCheckHandler(() => false);
+  testSession.on("will-download", (event) => event.preventDefault());
+  const request = testSession.webRequest;
+  const filter = { urls: ["*://*/*"] };
+  request.onBeforeRequest(filter, (details, callback) => {
+    if (isBlockedUrl(details.url)) return callback({ cancel: true });
+    void capture.checkRequest(details).then((allowed) => callback({ cancel: !allowed }));
+  });
+  request.onBeforeSendHeaders(filter, (details, callback) => {
+    capture.beforeSend(details);
+    callback({ requestHeaders: details.requestHeaders });
+  });
+  request.onHeadersReceived(filter, (details, callback) => {
+    callback({});
+    capture.onResponse(details);
+  });
+  request.onErrorOccurred(filter, capture.onError);
+  const resolver = createResolver({ maxPages: 1, openPage: capture.openPage });
+  const tester = createSourceTester({
+    resolve: (input) => resolver.resolve(input, { fresh: true }),
+    resolveHianime: hianimeIpc.resolveHiAnime, hiAnimeUserAgent: hianimeIpc.USER_AGENT,
+  });
+  ipcMain.handle("test-source", (event, entry, language) => {
+    if (event.sender !== getMainWindow()?.webContents) return { error: "Invalid source" };
+    const result = validateSource(entry);
+    const subtitleLang = validSubtitleLanguage(language) ? language : undefined;
+    return result.ok ? tester.test(result.source, { subtitleLang }) : { error: "Invalid source", errors: result.errors };
+  });
+}
+
 async function startServerMode() {
   storageIpc.applySecretMigrationIfNeeded();
   downloadsIpc.loadDownloads();
@@ -646,8 +688,6 @@ function createWindow() {
       if (wc.session === session.fromPartition("persist:player")) {
         playerWcIds.add(wc.id);
         wc.once("destroyed", () => playerWcIds.delete(wc.id));
-        // Per-site CSS (e.g. show only the player on KinoHub)
-        siteTweaks.attach(wc);
         // TV remote mode keys (no-op unless the setting is on)
         remoteKeys.attach(wc);
       }
@@ -709,6 +749,11 @@ subtitlesIpc.register({
 });
 hianimeIpc.register();
 remoteKeys.register(getMainWindow);
+ipcMain.on("set-source-rules", (event, id, entry) => {
+  if (event.sender !== getMainWindow()?.webContents || !playerWcIds.has(id)) return;
+  const contents = webContents.fromId(id);
+  if (contents) siteTweaks.apply(contents, siteTweaks.prepareSourceRules(entry));
+});
 playerIpc.register(getMainWindow, {
   writeSecretMigration: storageIpc.writeSecretMigration,
 });
@@ -775,7 +820,9 @@ let pipWindow = null;
 let pipUaCustom = false;
 const getPipWindow = () => pipWindow;
 
-ipcMain.handle("open-pip-window", (_, { url, title, userAgent }) => {
+let pipSourceRules;
+ipcMain.handle("open-pip-window", (_, { url, title, userAgent, source }) => {
+  pipSourceRules = siteTweaks.prepareSourceRules(source);
   if (!url || url === "about:blank") return { ok: false, reason: "no-url" };
 
   // Guarantee tracker/ad blocking is active in persist:player before any load
@@ -826,7 +873,8 @@ ipcMain.handle("open-pip-window", (_, { url, title, userAgent }) => {
 
   // Block all popup windows from the streaming site and any nested frames
   installPopupHandler(pipWindow.webContents);
-  siteTweaks.attach(pipWindow.webContents);
+  const contents = pipWindow.webContents;
+  contents.on("dom-ready", () => siteTweaks.apply(contents, pipSourceRules));
 
   // If the site uses <webview> elements (unlikely but safe), block there too
   pipWindow.webContents.on("did-attach-webview", (_, wc) => {
@@ -903,7 +951,10 @@ if (!gotTheLock) {
   app.whenReady().then(async () => {
     _bench("app ready");
     if (serverMode) await startServerMode();
-    else createWindow();
+    else {
+      setupSourceTesting();
+      createWindow();
+    }
   }).catch((error) => {
     console.error(error.message);
     app.exit(1);

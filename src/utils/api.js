@@ -1,3 +1,6 @@
+import { buildSourceUrl, loadSources, sourceKinds } from "../shared/sources";
+import { storage, STORAGE_KEYS } from "./storage";
+
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const IMG_BASE = "https://image.tmdb.org/t/p";
 
@@ -127,233 +130,48 @@ export const tmdbFetch = async (path, apiKey) => {
 // https://frembed.bar/api-docs
 // https://on.kinohub.vip/
 
-// ── Player Sources ────────────────────────────────────────────────────────────
-// supportsProgress: true = executeJavaScript tracking works for this source
-// cleanUserAgent:   true = load this source with the cleaned Chromium UA
-//                   (default Electron UA minus the "Electron/x.y.z" and app
-//                   tokens). Omit/false = Electron's untouched default UA.
-//
-export const PLAYER_SOURCES = [
-  {
-    id: "vidsrc",
-    label: "VidSrc",
-    tag: null,
-    note: null,
-    supportsProgress: true,
-    progressViaFrames: true, // video is in a nested iframe, needs main-process frame query
-    colorParam: null, // vidsrc doesn't support color param
-    langParam: "ds_lang", // ISO 639-1 language code
-    params: {
-      autoplay: "1"
-    },
-    movieUrl: (id) => `https://vsembed.su/embed/movie/${id}`,
-    tvUrl: (id, season, ep) =>
-      `https://vsembed.su/embed/tv/${id}/${season}/${ep}`,
-  },
-  {
-    id: "vidfast",
-    label: "Vidfast",
-    tag: null,
-    note: null,
-    supportsProgress: true,
-    cleanUserAgent: true,
-    colorParam: "theme", // hex without # → e.g. "e50914"
-    langParam: "sub",
-    params: {
-      autoPlay: "true",
-      poster: "true",
-      title: "true",
-      pip: "hide",
-    },
-    movieUrl: (id) => `https://vidfast.vc/movie/${id}`,
-    tvUrl: (id, season, ep) =>
-      `https://vidfast.vc/tv/${id}/${season}/${ep}`,
-  },
-  {
-    id: "vidlove",
-    label: "Vidlove",
-    tag: null,
-    note: null,
-    supportsProgress: true,
-    colorParam: "primarycolor", // hex without # → e.g. "e50914"
-    params: {
-      autoplay: "true",
-      autonext: "false",
-      tour: "true",
-      showNextEpisode: "false",
-      hideautonext: "true",
-      hidenextbutton: "true",
-    },
-    movieUrl: (id) => `https://player.vidlove.cc/embed/movie/${id}`,
-    tvUrl: (id, season, ep) =>
-      `https://player.vidlove.cc/embed/tv/${id}/${season}/${ep}`,
-  },
-  {
-    id: "aether",
-    label: "Aether",
-    tag: null,
-    note: "Multi Lang", // Has multiple audio languages
-    supportsProgress: true,
-    colorParam: null,
-    langParam: null,
-    params: {},
-    movieUrl: (id) => `https://aether.ist/media/tmdb-movie-${id}`,
-    tvUrl: (id, season, ep) =>
-      `https://aether.ist/media/tmdb-tv-${id}/${season}/${ep}`,
-  },
-  {
-    id: "vidrift",
-    label: "Vidrift",
-    tag: null,
-    note: "Multi Lang, Anime ✓", // Has Anime sub/dub and multi language support but not with anilistId
-    supportsProgress: true,
-    colorParam: "brandColor",
-    langParam: "sub",
-    params: {
-      title: "true",
-      hide: "next,episodes,cast",
-    },
-    movieUrl: (id) => `https://embed.vidrift.net/embed/movie/${id}`,
-    tvUrl: (id, season, ep) =>
-      `https://embed.vidrift.net/embed/tv/${id}/${season}/${ep}`,
-  },
-  {
-    id: "vidnest",
-    label: "Vidnest",
-    tag: null, // not anime-only -> works for movies/TV as well
-    note: "Anime ✓",
-    supportsProgress: true,
-    progressViaFrames: false,
-    supportsAnime: true, // has a dedicated anime route (AniList id + sub/dub)
-    colorParam: null, // no accent-colour query param documented
-    langParam: null,
-    params: {},
-    movieUrl: (id) => `https://vidnest.fun/movie/${id}`,
-    tvUrl: (id, season, ep) => `https://vidnest.fun/tv/${id}/${season}/${ep}`,
-    // Anime route: AniList id (not TMDB), episode number, "sub" | "dub"
-    animeUrl: (anilistId, ep, lang) =>
-      `https://vidnest.fun/anime/${anilistId}/${ep}/${lang}`,
-  },
-  {
-    id: "devideosrc",
-    label: "DeVideoSrc",
-    tag: null,
-    note: "🇩🇪",
-    supportsProgress: true,
-    progressViaFrames: true, // player may sit in a nested provider iframe -> main-process frame query
-    skipResetGuard: true, // no quality-change reset -> don't "seek back" after a manual rewind
-    idType: "imdb", // needs an IMDb ID (tt…) instead of the TMDB ID
-    colorParam: "color", // hex WITH # (URLSearchParams encodes it as %23)
-    colorWithHash: true,
-    langParam: null,
-    params: {
-      autoplay: "1",
-      muted: "0",
-    },
-    movieUrl: (id) => `https://devideosrc.co/custom/movie/${id}`,
-    tvUrl: (id, season, ep) =>
-      `https://devideosrc.co/custom/serial/${id}/${season}/${ep}`,
-  },
-  {
-    id: "frembed",
-    label: "Frembed",
-    tag: null, // movies, TV and anime (anime uses the normal movie/serie endpoints)
-    note: "🇫🇷",
-    supportsProgress: true,
-    progressViaFrames: true,
-    skipResetGuard: true, // no quality-change reset -> don't "seek back" after a manual rewind
-    colorParam: null,
-    langParam: null,
-    params: {},
-    movieUrl: (id) => `https://frembed.uno/embed/movie/${id}`,
-    tvUrl: (id, season, ep) =>
-      `https://frembed.uno/embed/serie/${id}?sa=${season}&epi=${ep}`,
-  },
-  {
-    id: "kinohub",
-    label: "KinoHub",
-    tag: null,
-    note: "🇷🇺",
-    supportsProgress: true,
-    progressViaFrames: true, // player may sit in a nested iframe -> main-process frame query
-    idType: "kinopoisk", // needs a Kinopoisk ID (resolved via Wikidata)
-    movieOnly: true, // series support not implemented yet
-    colorParam: null,
-    langParam: null,
-    params: {},
-    movieUrl: (id) => `https://on.kinohub.vip/movie/${id}`,
-  },
-  {
-    id: "hianime",
-    label: "HiAnime",
-    tag: "ANIME",
-    note: null,
-    supportsProgress: true,
-    async: true,
-    params: {},
-    movieUrl: (_id) => "https://hianime.at",
-    tvUrl: (_id, _season, _ep) => "https://hianime.at",
-  },
-];
+let sourceSnapshot;
+let savedSources;
 
-// Sources that require a transparent webRequest intercept to load properly
-export const NEEDS_INTERCEPT = ["vidsrc", "devideosrc", "frembed", "kinohub"];
-
-export const getSourceUrl = (
-  sourceId,
-  type,
-  id,
-  season,
-  ep,
-  extraParams = {},
-  // Optional: accent hex (with or without #) and subtitle ISO lang code
-  accentColor = null,
-  subtitleLang = null,
-) => {
-  const src =
-    PLAYER_SOURCES.find((s) => s.id === sourceId) ?? PLAYER_SOURCES[0];
-  // No usable ID yet (e.g. IMDb/Kinopoisk ID still being resolved) -> no URL
-  if (!id) return null;
-  // Movie-only source requested for a series -> no URL
-  if (type !== "movie" && !src.tvUrl) return null;
-  const baseUrl =
-    type === "movie" ? src.movieUrl(id) : src.tvUrl(id, season, ep);
-  const url = new URL(baseUrl);
-
-  Object.entries(src.params || {}).forEach(([key, value]) => {
-    url.searchParams.set(key, value);
-  });
-
-  // Inject accent color into the player if the source supports it
-  if (accentColor && src.colorParam) {
-    const hex = accentColor.replace(/^#/, "");
-    url.searchParams.set(src.colorParam, src.colorWithHash ? `#${hex}` : hex);
+export function getSources() {
+  const raw = storage.get(STORAGE_KEYS.PLAYER_SOURCES);
+  const snapshot = JSON.stringify(raw);
+  if (!savedSources || snapshot !== sourceSnapshot) {
+    savedSources = loadSources(raw);
+    sourceSnapshot = snapshot;
   }
+  return savedSources;
+}
+export const getEnabledSources = () => getSources().filter((source) => source.enabled);
+export const findSource = (id) => getSources().find((source) => source.id === id);
 
-  if (subtitleLang && src.langParam) {
-    url.searchParams.set(src.langParam, subtitleLang);
-  }
+export function pickSource(preferredId, canPlay) {
+  const choices = getEnabledSources().filter(canPlay);
+  return choices.find(({ id }) => id === preferredId) ?? choices[0] ?? null;
+}
 
-  Object.entries(extraParams).forEach(([key, value]) => {
-    if (value != null) {
-      url.searchParams.set(key, value);
-    }
-  });
+export function webSourceChoices(kind) {
+  const rank = { works: 0, untested: 1, failed: 2 };
+  const priority = (source) => source.resolver === "hianime" ? -1 : rank[source.web[kind]];
+  return getEnabledSources().filter((source) => sourceKinds(source).includes(kind))
+    .sort((a, b) => priority(a) - priority(b));
+}
 
-  return url.toString();
-};
+export function getSourceUrl(sourceId, type, id, season, episode, extraParams = {}, accentColor, subtitleLang) {
+  const source = findSource(sourceId);
+  const kind = type === "movie" ? "movie" : "tv";
+  const selected = source?.enabled ? source : getEnabledSources().find((entry) => entry[kind + "Url"]);
+  if (!selected || sourceId === null || !id) return null;
+  const accent = accentColor && selected.colorParam ? {
+    [selected.colorParam]: (selected.colorWithHash ? "#" : "") + accentColor.replace(/^#/, ""),
+  } : {};
+  const language = subtitleLang && selected.langParam ? { [selected.langParam]: subtitleLang } : {};
+  return buildSourceUrl(selected, { kind, id, season, episode, extraParams: { ...accent, ...language, ...extraParams } });
+}
 
-// ── Per-source user agent ─────────────────────────────────────────────────────
-// Provided by the main process (buildCleanUserAgent() in index.js) via preload.
-export const CLEAN_USER_AGENT =
-  (typeof window !== "undefined" && window.electron?.cleanUserAgent) || "";
-
-// Source should be loaded with the cleaned Chromium UA
-export const sourceUsesCleanUa = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.cleanUserAgent ?? false;
-
-export const sourceNeedsImdb = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.idType === "imdb";
+export const CLEAN_USER_AGENT = globalThis.window?.electron?.cleanUserAgent || "";
+export const sourceUsesCleanUa = (id) => findSource(id)?.cleanUserAgent ?? false;
+export const sourceInterceptsFullscreen = (id) => findSource(id)?.interceptFullscreen ?? false;
 
 // ── TMDB -> IMDb ID conversion ────────────────────────────────────────────────
 // IMDb IDs never change, so they are cached for the whole session (separately
@@ -390,14 +208,7 @@ export function fetchImdbId(type, tmdbId, apiKey) {
 
 // Which ID a source expects: "tmdb" (default) | "imdb" | "kinopoisk"
 export const sourceIdType = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.idType ?? "tmdb";
-
-export const sourceNeedsKinopoisk = (sourceId) =>
-  sourceIdType(sourceId) === "kinopoisk";
-
-// Source can only play movies (no series route yet)
-export const sourceIsMovieOnly = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.movieOnly ?? false;
+  findSource(sourceId)?.idType ?? "tmdb";
 
 // ── TMDB -> Kinopoisk ID conversion (via Wikidata) ────────────────────────────
 // Wikidata properties: P2603 Kinopoisk film ID, P4947 TMDB movie ID,
@@ -452,67 +263,24 @@ export function fetchKinopoiskId(type, tmdbId, apiKey) {
   return p;
 }
 
-export const sourceSupportsProgress = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.supportsProgress ?? false;
+export const sourceSupportsProgress = (id) => ["page", "frames"].includes(findSource(id)?.progress);
+export const sourceProgressViaFrames = (id) => findSource(id)?.progress === "frames";
+export const sourceSkipsResetGuard = (id) => findSource(id)?.skipResetGuard ?? false;
+export const sourceIsAsync = (id) => findSource(id)?.resolver === "hianime";
+export const sourceSupportsAnime = (id) => Boolean(findSource(id)?.animeUrl);
 
-export const sourceProgressViaFrames = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.progressViaFrames ?? false;
+export function getAnimeSourceUrl(id, anilist, episode, dubMode = "sub", extraParams = {}) {
+  const source = findSource(id);
+  if (!source?.enabled) return null;
+  return buildSourceUrl(source, { kind: "anime", anilist, episode, lang: dubMode === "dub" ? "dub" : "sub", extraParams });
+}
 
-export const sourceSkipsResetGuard = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.skipResetGuard ?? false;
-
-export const sourceIsAsync = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.async ?? false;
-
-// Source has its own anime route (AniList id + sub/dub) but is not anime-only
-export const sourceSupportsAnime = (sourceId) =>
-  PLAYER_SOURCES.find((s) => s.id === sourceId)?.supportsAnime ?? false;
-
-// Source is usable for anime: anime-only (tagged) or anime-capable
-export const sourceIsAnimeCapable = (sourceId) => {
-  const src = PLAYER_SOURCES.find((s) => s.id === sourceId);
-  return !!(src && (src.tag || src.supportsAnime));
-};
-
-/**
- * Build the anime-route URL for sources that support it (e.g. Vidnest).
- * @param {string} sourceId
- * @param {number|string} anilistId AniList media id of the season/movie
- * @param {number|string} episode   episode number inside that AniList entry
- * @param {"sub"|"dub"} dubMode
- * @returns {string|null} null if the source has no anime route or id is missing
- */
-export const getAnimeSourceUrl = (
-  sourceId,
-  anilistId,
-  episode,
-  dubMode = "sub",
-  extraParams = {},
-) => {
-  const src = PLAYER_SOURCES.find((s) => s.id === sourceId);
-  if (!src?.animeUrl || !anilistId || !episode) return null;
-  const url = new URL(
-    src.animeUrl(anilistId, episode, dubMode === "dub" ? "dub" : "sub"),
-  );
-  Object.entries(src.params || {}).forEach(([k, v]) =>
-    url.searchParams.set(k, v),
-  );
-  Object.entries(extraParams).forEach(([k, v]) => {
-    if (v != null) url.searchParams.set(k, v);
-  });
-  return url.toString();
-};
-
-// Return the next non-async source after `currentId` in PLAYER_SOURCES order
-export const getNextNonAsyncSource = (currentId) => {
-  const nonAsync = PLAYER_SOURCES.filter((s) => !s.async);
-  if (nonAsync.length === 0) return null;
-  const idx = nonAsync.findIndex((s) => s.id === currentId);
-  // If currentId is itself non-async, return the next one (wrap around).
-  // If currentId is async (e.g. HiAnime), just return the first non-async.
-  if (idx < 0) return nonAsync[0].id;
-  return nonAsync[(idx + 1) % nonAsync.length].id;
-};
+export function getNextNonAsyncSource(currentId, canPlay = () => true) {
+  const sources = getEnabledSources();
+  const index = sources.findIndex(({ id }) => id === currentId);
+  const ordered = index < 0 ? sources : [...sources.slice(index + 1), ...sources.slice(0, index)];
+  return ordered.find((source) => !source.resolver && canPlay(source))?.id ?? null;
+}
 
 // ── AniList API (anime metadata) ──────────────────────────────────────────────
 const ANILIST_API = "https://graphql.anilist.co";

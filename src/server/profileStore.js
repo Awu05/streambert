@@ -59,6 +59,7 @@ function createProfileStore(baseDir, { debounceMs = 300 } = {}) {
 
   return {
     load: (id) => structuredClone(get(id).data),
+    getValue: (id, key) => structuredClone(get(id).data[key]),
     apply(id, change) {
       if (!validateChange(change)) throw new TypeError("Invalid storage change");
       const profile = get(id);

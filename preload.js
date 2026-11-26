@@ -78,6 +78,8 @@ contextBridge.exposeInMainWorld("electron", {
   respondClose: (confirm) => ipcRenderer.send("close-response", confirm),
 
   // anime episode resolver (main-process HTTP, bypasses CORS/bot-check)
+  setSourceRules: (id, entry) => ipcRenderer.send("set-source-rules", id, entry),
+  testSource: (entry, _signal, subtitleLang) => ipcRenderer.invoke("test-source", entry, subtitleLang),
   resolveHiAnime: (args) => ipcRenderer.invoke("resolve-hianime", args),
   setPlayerVideo: (args) => ipcRenderer.invoke("set-player-video", args),
   // progress of the HiAnime lookup (stage: "search" | "episodes" | "stream");
@@ -153,8 +155,8 @@ contextBridge.exposeInMainWorld("electron", {
   secureSet: (key, value) =>
     ipcRenderer.invoke("secure-store-set", { key, value }),
   // Picture-in-Picture pop-out (full player UI, only one stream active at a time)
-  openPipWindow: (url, title, userAgent = null) =>
-    ipcRenderer.invoke("open-pip-window", { url, title, userAgent }),
+  openPipWindow: (url, title, userAgent = null, source) =>
+    ipcRenderer.invoke("open-pip-window", { url, title, userAgent, source }),
   closePipWindow: () => ipcRenderer.invoke("close-pip-window"),
   getPipWebContentsId: () => ipcRenderer.invoke("get-pip-webcontents-id"),
   onPipOpened: (cb) => {

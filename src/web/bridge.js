@@ -72,7 +72,7 @@ export function installWebBridge(boot, {
   const rpc = async (channel, ...args) =>
     (await apiRequest(`/api/rpc/${channel}`, { args, clientId }, { fetch, window }))?.result;
   const bridge = {
-    isWeb: true, browserSources: boot.browserSources || {},
+    isWeb: true,
     cleanUserAgent: boot.cleanUserAgent, envDefaults: boot.envDefaults,
     capabilities: {
       desktop: false, pip: false, externalPlayer: false, folderPicker: false,
@@ -82,6 +82,8 @@ export function installWebBridge(boot, {
     secureGet: async (key) => (await rpc("secure-store-get", key))?.value ?? null,
     secureSet: (key, value) => rpc("secure-store-set", { key, value }),
     setTvRemoteMode() {},
+    setSourceRules() {},
+    testSource: (entry, signal, subtitleLang) => apiRequest("/api/sources/test", { entry, subtitleLang }, { fetch, window, signal }),
     respondClose() {},
     playerStopped() {},
     async openExternal(url) {

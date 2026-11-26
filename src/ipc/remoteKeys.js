@@ -4,6 +4,7 @@
 // renderer turns TV remote mode on, so desktop keys pass through untouched.
 
 const { ipcMain, webFrameMain } = require("electron");
+const siteTweaks = require("./siteTweaks");
 
 const BACK_KEYS = new Set(["Escape", "Backspace", "GoBack", "BrowserBack"]);
 const REPEATABLE = { ArrowLeft: "seekBack", ArrowRight: "seekForward" };
@@ -147,6 +148,7 @@ async function run(wc, action, now = Date.now(), getMw = getMainWindow) {
   // visible player is clicked. Done in-page because sendInputEvent clicks
   // don't reach cross-origin iframes.
   if (action === "playPause") {
+    await siteTweaks.clickFirst(wc);
     await clickPlayDeep(wc);
   }
 }
