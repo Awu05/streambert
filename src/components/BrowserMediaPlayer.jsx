@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { fetchImdbId, fetchKinopoiskId, getEnabledSources, webSourceChoices } from "../utils/api";
+import { fetchImdbId, fetchKinopoiskId, webSourceChoices } from "../utils/api";
 import { recordProgress } from "../utils/progressTracking";
 import { storage, secureStorage, STORAGE_KEYS } from "../utils/storage";
 import { apiRequest, getClientId } from "../web/bridge";
@@ -13,7 +13,6 @@ import WebPlayer from "./WebPlayer";
 // The "Find subtitles" row of the Options panel: searches Wyzie when opened.
 function useSubtitleSearchMenu({ itemId, mediaType, season, episode, onPick }) {
   const [results, setResults] = useState(null);
-  const [showSources, setShowSources] = useState(false);
   const [status, setStatus] = useState("");
   async function search() {
     setStatus("Searching…");
@@ -72,6 +71,7 @@ export default function BrowserMediaPlayer({
   const active = waitingForAnime ? undefined : selected ?? choices[0];
   const source = active?.id;
   const [attempt, setAttempt] = useState(0);
+  const [showSources, setShowSources] = useState(false);
   const [status, setStatus] = useState({ mode: "loading" });
   const [customTracks, setCustomTracks] = useState([]);
   const marked = useRef(false);
@@ -185,9 +185,8 @@ export default function BrowserMediaPlayer({
       menus={menus} />, document.body);
   }
 
-  const ordered = getEnabledSources().filter(({ id }) => choices.some((choice) => choice.id === id));
-  const currentIndex = ordered.findIndex(({ id }) => id === source);
-  const next = ordered.length > 1 && ordered[(currentIndex + 1) % ordered.length];
+  // Suggest the next source in menu order (working ones first).
+  const next = choices.length > 1 && choices[(choices.findIndex(({ id }) => id === source) + 1) % choices.length];
   const failed = status.mode === "error";
   return createPortal(
     <div className="web-player web-player-status web-player-overlay" ref={statusPanel} role="dialog" aria-label={title}

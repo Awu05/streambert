@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-export default function SourceEditor({ value, update, errors, remove, focusName, Select }) {
+export default function SourceEditor({ value, update, errors, remove, focusName, Select, Toggle }) {
   const { t } = useTranslation();
   const [advanced, setAdvanced] = useState(false);
   const label = (field) => t("settings.sources.field." + field);
@@ -29,10 +29,10 @@ export default function SourceEditor({ value, update, errors, remove, focusName,
     </div>
   );
   const toggle = (field) => (
-    <label className="source-checkbox">
-      <input type="checkbox" checked={!!value[field]} onChange={(event) => update({ [field]: event.target.checked })} />
-      {label(field)}
-    </label>
+    <div className="source-toggle">
+      <span>{label(field)}</span>
+      <Toggle value={!!value[field]} title={label(field)} onChange={(on) => update({ [field]: on })} />
+    </div>
   );
   const changeParam = (index, patch) => update({
     paramRows: value.paramRows.map((row, i) => i === index ? { ...row, ...patch } : row),

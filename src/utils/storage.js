@@ -33,8 +33,14 @@ const localBackend = {
 
 // The browser build swaps in server-backed storage before the app loads.
 let backend = localBackend;
+// Bumped on every write (local or from another device), so callers can cache
+// values derived from storage until something changes.
+let revision = 0;
+export const storageRevision = () => revision;
+globalThis.addEventListener?.("streambert:storage-changed", () => { revision++; });
 export function setStorageBackend(value) {
   backend = value;
+  revision++;
   isElectron = !!window.electron;
 }
 
@@ -45,9 +51,9 @@ export const storage = {
     if (key === "playerSource" && value === "allmanga") return "hianime";
     return value;
   },
-  set: (key, value) => backend.set(key, value),
-  remove: (key) => backend.remove(key),
-  clearAll: () => backend.clearAll(),
+  set: (key, value) => { revision++; backend.set(key, value); },
+  remove: (key) => { revision++; backend.remove(key); },
+  clearAll: () => { revision++; backend.clearAll(); },
   flush: () => backend.flush?.(),
 };
 

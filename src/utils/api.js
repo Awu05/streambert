@@ -1,5 +1,5 @@
 import { buildSourceUrl, loadSources, sourceKinds } from "../shared/sources";
-import { storage, STORAGE_KEYS } from "./storage";
+import { storage, storageRevision, STORAGE_KEYS } from "./storage";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const IMG_BASE = "https://image.tmdb.org/t/p";
@@ -130,15 +130,13 @@ export const tmdbFetch = async (path, apiKey) => {
 // https://frembed.bar/api-docs
 // https://on.kinohub.vip/
 
-let sourceSnapshot;
 let savedSources;
+let sourcesRevision = -1;
 
 export function getSources() {
-  const raw = storage.get(STORAGE_KEYS.PLAYER_SOURCES);
-  const snapshot = JSON.stringify(raw);
-  if (!savedSources || snapshot !== sourceSnapshot) {
-    savedSources = loadSources(raw);
-    sourceSnapshot = snapshot;
+  if (sourcesRevision !== storageRevision()) {
+    savedSources = loadSources(storage.get(STORAGE_KEYS.PLAYER_SOURCES));
+    sourcesRevision = storageRevision();
   }
   return savedSources;
 }

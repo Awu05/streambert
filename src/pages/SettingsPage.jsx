@@ -2658,7 +2658,6 @@ function Divider() {
 const SUPPORTS_HIGHLIGHT =
   typeof CSS !== "undefined" && typeof CSS.highlights !== "undefined";
 const SECTION_NAV = [
-  { id: "sources", labelKey: "settings.nav.sources", icon: "⇄", keywords: ["source", "provider", "embed", "stream"] },
   {
     id: "updates",
     labelKey: "settings.nav.updates",
@@ -2719,6 +2718,7 @@ const SECTION_NAV = [
       "outro",
     ],
   },
+  { id: "sources", labelKey: "settings.nav.sources", icon: "⇄", keywords: ["source", "provider", "embed", "stream"] },
   {
     id: "subtitles",
     labelKey: "settings.nav.subtitles",

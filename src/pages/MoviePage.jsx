@@ -1165,7 +1165,7 @@ export default function MoviePage({
               ref={attachSourceRules}
               // A fresh guest per UA mode: loadURL's userAgent override sticks
               // to the WebContents, so it can't be unset on a reused webview.
-              key={playerSource}
+              key={sourceUsesCleanUa(playerSource) ? "ua-clean" : "ua-default"}
               useragent={
                 sourceUsesCleanUa(playerSource) ? CLEAN_USER_AGENT : undefined
               }

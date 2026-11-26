@@ -12,6 +12,16 @@ function classifyResponse(path, type) {
   return null;
 }
 
+// Short MP4s (ads, background loops) are skipped; a film is far larger.
+const MIN_MP4_BYTES = 5 * 1024 * 1024;
+
+// Full file size from Content-Range ("bytes 0-1/12345") or Content-Length.
+function responseSize(headers = {}) {
+  const header = (name) => Object.entries(headers).find(([key]) => key.toLowerCase() === name)?.[1]?.join(",");
+  const total = /\/(\d+)\s*$/.exec(header("content-range") || "")?.[1] ?? header("content-length");
+  return Number(total) || 0;
+}
+
 function createHiddenPageCapture({ BrowserWindow, clickPlayDeep, buildCleanUserAgent, extractSubtitleLang, partition = "persist:player" }) {
   const windows = new Map();
   const requests = new Map();
@@ -48,7 +58,9 @@ function createHiddenPageCapture({ BrowserWindow, clickPlayDeep, buildCleanUserA
         .find(([name]) => name.toLowerCase() === "content-type")?.[1]?.join(";") || "";
       const kind = classifyResponse(new URL(details.url).pathname, type);
       if (kind === "hls") capture.hls ??= { url: details.url, kind, headers };
-      if (kind === "mp4") capture.mp4 ??= { media: { url: details.url, kind, headers }, at: Date.now() };
+      if (kind === "mp4" && responseSize(details.responseHeaders) >= MIN_MP4_BYTES) {
+        capture.mp4 ??= { media: { url: details.url, kind, headers }, at: Date.now() };
+      }
       if (kind === "dash") capture.dash = true;
       if (kind === "vtt") capture.subtitles.set(details.url, extractSubtitleLang(details.url) || "und");
     },
@@ -116,4 +128,4 @@ function createHiddenPageCapture({ BrowserWindow, clickPlayDeep, buildCleanUserA
   };
 }
 
-module.exports = { classifyResponse, createHiddenPageCapture };
+module.exports = { classifyResponse, createHiddenPageCapture, responseSize };

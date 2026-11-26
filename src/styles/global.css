@@ -4125,7 +4125,7 @@ html[data-win-titlebar][data-maximized] .main {
 }
 .source-field textarea { resize: vertical; }
 .source-param-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; margin: 6px 0; }
-.source-checkbox { display: flex; align-items: center; gap: 8px; }
+.source-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .source-advanced, .source-delete { justify-self: start; }
 .source-row .source-error, .source-delete { color: var(--red); }
 .player-no-source { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; padding: 20px; }

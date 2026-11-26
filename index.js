@@ -752,7 +752,7 @@ remoteKeys.register(getMainWindow);
 ipcMain.on("set-source-rules", (event, id, entry) => {
   if (event.sender !== getMainWindow()?.webContents || !playerWcIds.has(id)) return;
   const contents = webContents.fromId(id);
-  if (contents) siteTweaks.apply(contents, siteTweaks.prepareSourceRules(entry));
+  if (contents) siteTweaks.setRules(contents, siteTweaks.prepareSourceRules(entry));
 });
 playerIpc.register(getMainWindow, {
   writeSecretMigration: storageIpc.writeSecretMigration,
@@ -820,9 +820,8 @@ let pipWindow = null;
 let pipUaCustom = false;
 const getPipWindow = () => pipWindow;
 
-let pipSourceRules;
 ipcMain.handle("open-pip-window", (_, { url, title, userAgent, source }) => {
-  pipSourceRules = siteTweaks.prepareSourceRules(source);
+  const sourceRules = siteTweaks.prepareSourceRules(source);
   if (!url || url === "about:blank") return { ok: false, reason: "no-url" };
 
   // Guarantee tracker/ad blocking is active in persist:player before any load
@@ -846,6 +845,7 @@ ipcMain.handle("open-pip-window", (_, { url, title, userAgent, source }) => {
       pipWindow.webContents.setUserAgent(app.userAgentFallback);
     }
     pipUaCustom = !!loadOpts.userAgent;
+    siteTweaks.setRules(pipWindow.webContents, sourceRules);
     pipWindow.loadURL(url, loadOpts);
     pipWindow.focus();
     return { ok: true };
@@ -873,8 +873,7 @@ ipcMain.handle("open-pip-window", (_, { url, title, userAgent, source }) => {
 
   // Block all popup windows from the streaming site and any nested frames
   installPopupHandler(pipWindow.webContents);
-  const contents = pipWindow.webContents;
-  contents.on("dom-ready", () => siteTweaks.apply(contents, pipSourceRules));
+  siteTweaks.setRules(pipWindow.webContents, sourceRules);
 
   // If the site uses <webview> elements (unlikely but safe), block there too
   pipWindow.webContents.on("did-attach-webview", (_, wc) => {

@@ -64,9 +64,16 @@ async function replay(media, fetch, signal) {
       playlist = new URL(firstUri, base).href;
       continue;
     }
-    const init = lines.find((line) => line.startsWith("#EXT-X-MAP:"))?.match(/(?:[:,])URI="([^"]+)"/)?.[1];
-    for (const uri of [init, firstUri].filter(Boolean)) {
-      const { status } = await fetch(new URL(uri, base).href, headers, { range, signal });
+    const tagUri = (tag) => lines.find((line) => line.startsWith(tag) && !/METHOD=NONE/.test(line))
+      ?.match(/[:,]URI="([^"]+)"/)?.[1];
+    // Encryption key (whole file), init segment and first segment (first KB).
+    for (const [uri, options] of [
+      [tagUri("#EXT-X-KEY:"), { signal }],
+      [tagUri("#EXT-X-MAP:"), { range, signal }],
+      [firstUri, { range, signal }],
+    ]) {
+      if (!uri) continue;
+      const { status } = await fetch(new URL(uri, base).href, headers, options);
       if (!playable(status)) return refused(status);
     }
     return works;

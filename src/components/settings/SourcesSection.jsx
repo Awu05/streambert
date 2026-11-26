@@ -210,7 +210,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
         {running === entry.rowKey && <p className="source-status" role="status">{label("testingStatus")}</p>}
         {testedError === entry.rowKey && <p className="source-error" role="alert">{label("testError")}</p>}
         {editing === entry.rowKey && <fieldset className="source-editor-fields" disabled={locked}>
-          <SourceEditor Select={Select} value={entry} update={(changes) => update(entry, changes)}
+          <SourceEditor Select={Select} Toggle={Toggle} value={entry} update={(changes) => update(entry, changes)}
             errors={errors.filter(({ rowKey }) => rowKey === entry.rowKey)}
             focusName={!entry.id} remove={() => setConfirm(entry.rowKey)} />
         </fieldset>}
