@@ -60,8 +60,7 @@ function createStreamRegistry({ now = Date.now } = {}) {
   };
 }
 
-// A stream path signed for STREAM_TTL_SECONDS. It works without the login
-// cookie, which iOS's native HLS player doesn't always send.
+// A signed stream path: works without the login cookie (external players, iOS).
 function signedStreamPath(entry, auth, path = entry.path) {
   return `${path}?${auth.signUrl(`/s/${entry.id}`, STREAM_TTL_SECONDS)}`;
 }

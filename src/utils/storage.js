@@ -31,10 +31,11 @@ const localBackend = {
   },
 };
 
+// The browser build swaps in server-backed storage before the app loads.
 let backend = localBackend;
 export function setStorageBackend(value) {
   backend = value;
-  isElectron = !!globalThis.window?.electron;
+  isElectron = !!window.electron;
 }
 
 export const storage = {
@@ -155,8 +156,10 @@ export const clearFailoverSource = (epKey) => {
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-/** True when the app bridge is available. */
-export let isElectron = !!globalThis.window?.electron;
+/** True when running inside Electron (contextBridge exposed). */
+// In the browser build this module can load before the bridge exists, so the
+// bridge is checked again when storage is set up (and at call time below).
+export let isElectron = typeof window !== "undefined" && !!window.electron;
 
 /** Format a byte count into a human-readable string. */
 export function formatBytes(bytes) {
@@ -179,16 +182,18 @@ export function formatBytes(bytes) {
 //   "subdlApiKey" - SubDL API key
 //   "wyzieApiKey" - Wyzie API key
 
+const _isElectronSecure = () => typeof window !== "undefined" && !!window.electron?.secureGet;
+
 export const secureStorage = {
   /** Read an encrypted value. Returns null if not set. */
   async get(key) {
-    if (!globalThis.window?.electron?.secureGet) return null;
+    if (!_isElectronSecure()) return null;
     return window.electron.secureGet(key);
   },
 
   /** Write an encrypted value. Pass null/empty to delete. */
   async set(key, value) {
-    if (!globalThis.window?.electron?.secureSet) return;
+    if (!_isElectronSecure()) return;
     return window.electron.secureSet(key, value ?? "");
   },
 };

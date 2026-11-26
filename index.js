@@ -354,9 +354,8 @@ ipcMain.on("get-env-defaults", (event) => {
 // Add a host here if another player shows the same message.
 const POPUP_STUB_HOSTS = ["vidrift.net", "vidrift.in"];
 
-// Server mode filters every player-session request itself, so the
-// BLOCKED_HOSTS match patterns ("*://host/path*", host may be "*.domain") are
-// parsed once into lookups by host.
+// Server mode filters every player-session request itself, so BLOCKED_HOSTS
+// ("*://host/path*", host may be "*.domain") is parsed once into host lookups.
 const blockedExactHosts = new Map();
 const blockedDomains = new Map();
 for (const pattern of BLOCKED_HOSTS) {

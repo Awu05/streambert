@@ -11,10 +11,8 @@
   }
 
   /* ── App shell: the sidebar becomes a bottom tab bar ─────────────────── */
-  /* iOS can scroll the document even with overflow: hidden (for example when
-     focus moves), which shifts the page up out of reach, and its 100vh is
-     taller than the visible area. Pinning the document to the screen stops
-     both; the app scrolls inside .main. */
+  /* iOS can scroll the document despite overflow: hidden and its 100vh is too
+     tall, so the document is pinned to the screen; the app scrolls in .main. */
   html, body, #root {
     position: fixed;
     inset: 0;

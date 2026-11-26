@@ -1,4 +1,4 @@
-export function detectPlatform(userAgent, touchPoints = 0) {
+function detectPlatform(userAgent, touchPoints = 0) {
   if (/iPhone|iPad|iPod/i.test(userAgent) || (/Macintosh/.test(userAgent) && touchPoints > 1)) return "ios";
   if (/Android/i.test(userAgent)) return "android";
   return "desktop";

@@ -72,7 +72,7 @@ export function installWebBridge(boot, {
   const rpc = async (channel, ...args) =>
     (await apiRequest(`/api/rpc/${channel}`, { args, clientId }, { fetch, window }))?.result;
   const bridge = {
-    isWeb: true, sourceModes: boot.sourceModes || {},
+    isWeb: true, browserSources: boot.browserSources || {},
     cleanUserAgent: boot.cleanUserAgent, envDefaults: boot.envDefaults,
     capabilities: {
       desktop: false, pip: false, externalPlayer: false, folderPicker: false,

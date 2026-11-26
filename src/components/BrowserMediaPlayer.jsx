@@ -69,7 +69,8 @@ export default function BrowserMediaPlayer({
   const [status, setStatus] = useState({ mode: "loading" });
   const [customTracks, setCustomTracks] = useState([]);
   const marked = useRef(false);
-  const progressStart = useRef(storage.get("dlTime_" + progressKey) || 0);
+  const savedPosition = () => storage.get("dlTime_" + progressKey) || 0;
+  const progressStart = useRef(savedPosition());
   const statusPanel = useRef(null);
   const hianime = source === "hianime";
   useEffect(() => {
@@ -113,12 +114,12 @@ export default function BrowserMediaPlayer({
 
   function changeSource(value) {
     if (source === value) return;
-    progressStart.current = storage.get("dlTime_" + progressKey) || 0;
+    progressStart.current = savedPosition();
     setSource(value);
     storage.set(STORAGE_KEYS.PLAYER_SOURCE, value);
   }
   function retry() {
-    progressStart.current = storage.get("dlTime_" + progressKey) || 0;
+    progressStart.current = savedPosition();
     setAttempt((number) => number + 1);
   }
 

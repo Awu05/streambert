@@ -3,7 +3,7 @@ const https = require("node:https");
 const { randomUUID } = require("node:crypto");
 const { json, readJson } = require("./httpServer");
 const { authorizePublicUrl } = require("./netGuard");
-const { providerRequest } = require("./sourceModes");
+const { providerRequest } = require("./browserSources");
 const { subtitleToVtt } = require("./fileRoutes");
 const { signedStreamPath, streamLink } = require("./streams");
 
@@ -107,10 +107,6 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
         });
         break;
       }
-      case "/api/play/cancel":
-        resolver.cancel(body.clientId);
-        res.writeHead(204).end();
-        break;
       default:
         return false;
     }

@@ -1,36 +1,38 @@
+// Finds streams with at most `maxPages` hidden pages open; extra requests queue.
+// Results are cached per provider URL for `cacheMs`.
 function createResolver({ maxPages, openPage, timeoutMs = 25000, cacheMs = 600000 }) {
   const queue = [];
   const running = new Set();
   const resolved = new Map();
   const notify = () => queue.forEach((job, index) => job.onQueue?.(index + 1));
 
+  async function run(job) {
+    const { signal } = job.controller;
+    const timeout = setTimeout(() => job.controller.abort(new Error("Timed out finding the stream")), timeoutMs);
+    try {
+      if (signal.aborted) throw signal.reason;
+      const aborted = new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+      const media = await Promise.race([openPage(job.input, signal), aborted]);
+      resolved.set(job.input.url, { media, expires: Date.now() + cacheMs });
+      job.resolve(media);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   function drain() {
     while (running.size < maxPages && queue.length) {
       const job = queue.shift();
-      const { input } = job;
       job.onQueue?.(null);
-      const cached = resolved.get(input.url);
+      const cached = resolved.get(job.input.url);
       if (cached?.expires > Date.now()) {
         job.resolve(cached.media);
         continue;
       }
       running.add(job);
-      Promise.resolve().then(async () => {
-        if (job.controller.signal.aborted) throw job.controller.signal.reason;
-        const timeout = setTimeout(() => job.controller.abort(new Error("Timed out finding the stream")), timeoutMs);
-        try {
-          const signal = job.controller.signal;
-          const aborted = new Promise((_resolve, reject) => {
-            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-          });
-          const media = await Promise.race([openPage(input, signal), aborted]);
-          if (job.controller.signal.aborted) throw job.controller.signal.reason;
-          resolved.set(input.url, { media, expires: Date.now() + cacheMs });
-          job.resolve(media);
-        } finally {
-          clearTimeout(timeout);
-        }
-      }).catch(job.reject).finally(() => {
+      run(job).catch(job.reject).finally(() => {
         running.delete(job);
         drain();
       });
@@ -38,18 +40,14 @@ function createResolver({ maxPages, openPage, timeoutMs = 25000, cacheMs = 60000
     notify();
   }
 
-  function cancel(clientId) {
-    if (!clientId) return;
+  // A request's id is "<client>:<request>", so a client id cancels all its requests.
+  function cancel(id) {
+    if (!id) return;
+    const matches = (job) => job.clientId === id || job.clientId?.startsWith(id + ":");
     for (let index = queue.length - 1; index >= 0; index--) {
-      if (queue[index].clientId === clientId || queue[index].clientId?.startsWith(clientId + ":")) {
-        queue.splice(index, 1)[0].reject(new Error("Cancelled"));
-      }
+      if (matches(queue[index])) queue.splice(index, 1)[0].reject(new Error("Cancelled"));
     }
-    for (const job of running) {
-      if (job.clientId === clientId || job.clientId?.startsWith(clientId + ":")) {
-        job.controller.abort(new Error("Cancelled"));
-      }
-    }
+    for (const job of running) if (matches(job)) job.controller.abort(new Error("Cancelled"));
     notify();
   }
 

@@ -7,8 +7,7 @@ import { languageLabel } from "../web/subtitleLabel";
 import WebPlayer from "./WebPlayer";
 
 export default function DownloadedWebPlayer({ download, progressKey, onClose, saveProgress, markWatched }) {
-  // The server may first repackage the file so browsers can play it, then
-  // returns signed links (iOS's player may not send the login cookie).
+  // The server repackages the file if browsers can't play it, then returns signed links.
   const [state, setState] = useState({ mode: "preparing" });
   const marked = useRef(false);
   const id = encodeURIComponent(download.id);

@@ -91,4 +91,4 @@ function captureIpc(ipcMain, { isPathAllowed, prepare = (_channel, args) => args
   };
 }
 
-module.exports = { RpcError, RPC_ALLOWLIST, makePathGuard, captureIpc };
+module.exports = { RpcError, makePathGuard, captureIpc };

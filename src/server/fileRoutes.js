@@ -146,4 +146,4 @@ function createFileHandler({ getDownloads, isPathAllowed, auth, convert = remuxT
   };
 }
 
-module.exports = { createFileHandler, subtitleToVtt, isMpegTs, remuxToMp4 };
+module.exports = { createFileHandler, subtitleToVtt };

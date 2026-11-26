@@ -5,5 +5,4 @@ export function hasCapability(name) {
 
 export const isWebBuild = () => globalThis.window?.electron?.isWeb === true;
 export const isSourceAvailableInBrowser = (source, kind) =>
-  Object.hasOwn(globalThis.window?.electron?.sourceModes || {}, source) &&
-  window.electron.sourceModes[source][kind] === "detached";
+  globalThis.window?.electron?.browserSources?.[source]?.includes(kind) === true;
