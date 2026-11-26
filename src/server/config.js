@@ -11,6 +11,7 @@ function parseServerConfig(env, userDataDir) {
   const maxPages = enabled ? Number(env.STREAMBERT_MAX_HIDDEN_PAGES?.trim() || NaN) : NaN;
   return {
     enabled,
+    resetMainPin: enabled && env.STREAMBERT_RESET_MAIN_PIN === "1",
     password,
     port: Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 8080,
     host: (enabled && env.STREAMBERT_HOST?.trim()) || "0.0.0.0",
