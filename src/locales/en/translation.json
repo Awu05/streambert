@@ -238,6 +238,7 @@
       "save": "Save"
     },
     "version": {
+      "running": "Streambert v{{version}}",
       "couldNotReach": "Could not reach {{name}}.",
       "theUpdateServer": "the update server",
       "title": "App Version",

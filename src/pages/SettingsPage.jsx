@@ -3801,6 +3801,9 @@ export default function SettingsPage({
 
             {/* Version & Updates */}
             {!kids && hasCapability("updater") && <><VersionSection /><Divider /></>}
+            {!hasCapability("updater") && window.electron?.appVersion && <p className="app-version app-version--settings">
+              {t("settings.version.running", { version: window.electron.appVersion })}
+            </p>}
 
             {/* TMDB API Token */}
             {!kids && <><div style={{ marginBottom: 40 }}>

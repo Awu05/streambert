@@ -8,7 +8,7 @@ function pinError(res, result) {
   return true;
 }
 
-function createProfileHandler({ profiles, auth, store, hub, beforeDelete = () => {}, downloadBytes = () => 0 }) {
+function createProfileHandler({ profiles, auth, store, hub, appVersion, beforeDelete = () => {}, downloadBytes = () => 0 }) {
   const deleting = new Set();
   const invalidate = (id) => hub.invalidateProfile(id);
   const choose = (res, cookie, record, session) => {
@@ -26,7 +26,7 @@ function createProfileHandler({ profiles, auth, store, hub, beforeDelete = () =>
     const manage = manageList || root && post || target && ["PATCH", "DELETE"].includes(method);
     try {
       if (root && method === "GET") {
-        json(res, 200, { profiles: profiles.list(), current: profile?.id ?? null });
+        json(res, 200, { profiles: profiles.list(), current: profile?.id ?? null, version: appVersion });
       } else if (post && pathname === "/api/profiles/leave") {
         res.setHeader("Set-Cookie", cookie("sb_profile", "", 0));
         hub.disconnectSession(session);
