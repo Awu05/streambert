@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 // ── Image component that proxies through Electron main process ────────────────
-// Fixes Codeberg (and other external) images being blocked by Electron's CSP.
+// Fixes external release-note images being blocked by Electron's CSP.
 // Falls back to direct <img src> when not running in Electron.
 function ReleaseImage({ src, alt, style }) {
   const [resolvedSrc, setResolvedSrc] = useState(null);

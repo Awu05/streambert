@@ -1,10 +1,9 @@
 // ── App Update Utilities ──────────────────────────────────────────────────────
 // Centralised update-check logic. Imported by both App.jsx and SettingsPage.jsx.
 //
-// Supports multiple release sources (GitHub + Codeberg).
+// Releases come from this fork's GitHub repository.
 
-export const GITHUB_REPO = "truelockmc/streambert";
-export const CODEBERG_REPO = "truelockmc/streambert";
+export const GITHUB_REPO = "Awu05/streambert";
 
 // ── Source registry ───────────────────────────────────────────────────────────
 // Each entry just describes *where* to fetch from and how to build the
@@ -16,13 +15,6 @@ export const UPDATE_SOURCES = {
     apiUrl: `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=10`,
     headers: { Accept: "application/vnd.github+json" },
     fallbackUrl: `https://github.com/${GITHUB_REPO}/releases/latest`,
-  },
-  codeberg: {
-    id: "codeberg",
-    label: "Codeberg",
-    apiUrl: `https://codeberg.org/api/v1/repos/${CODEBERG_REPO}/releases?limit=10`,
-    headers: { Accept: "application/json" },
-    fallbackUrl: `https://codeberg.org/${CODEBERG_REPO}/releases`,
   },
 };
 
@@ -53,13 +45,13 @@ async function getCurrentVersion() {
 }
 
 /**
- * Check for updates against a given source ("github" | "codeberg").
+ * Check for updates against a given source (see UPDATE_SOURCES).
  * Same logic, same validation, regardless of source, only the API
  * endpoint and headers differ (see UPDATE_SOURCES above).
  */
 export async function checkForUpdates(source = DEFAULT_UPDATE_SOURCE) {
-  const cfg = UPDATE_SOURCES[source];
-  if (!cfg) throw new Error(`Unknown update source: ${source}`);
+  // A source saved by an older version (e.g. "codeberg") falls back to the default.
+  const cfg = UPDATE_SOURCES[source] ?? UPDATE_SOURCES[DEFAULT_UPDATE_SOURCE];
 
   const currentVersion = await getCurrentVersion();
 

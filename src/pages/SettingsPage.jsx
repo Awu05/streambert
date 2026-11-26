@@ -569,7 +569,7 @@ function VersionSection() {
   const [autoSaved, setAutoSaved] = useState(false);
   const [currentVersion, setCurrentVersion] = useState("0.0.0");
   const [updateSource, setUpdateSource] = useState(
-    () => storage.get(STORAGE_KEYS.UPDATE_SOURCE) || DEFAULT_UPDATE_SOURCE,
+    () => UPDATE_SOURCES[storage.get(STORAGE_KEYS.UPDATE_SOURCE)] ? storage.get(STORAGE_KEYS.UPDATE_SOURCE) : DEFAULT_UPDATE_SOURCE,
   );
 
   useEffect(() => {
@@ -658,8 +658,8 @@ function VersionSection() {
           {checking ? t("settings.version.checking") : t("settings.version.check")}
         </button>
 
-        {/* Update source toggle */}
-        <div
+        {/* Update source toggle (only when there's more than one source) */}
+        {Object.keys(UPDATE_SOURCES).length > 1 && <div
           style={{
             display: "inline-flex",
             border: "1px solid var(--border)",
@@ -687,7 +687,7 @@ function VersionSection() {
               {src.label}
             </button>
           ))}
-        </div>
+        </div>}
 
         {result && !result.error && result.hasUpdate && (
           <button
