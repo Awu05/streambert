@@ -2,25 +2,12 @@ import { useEffect, useState } from "react";
 import { storage, STORAGE_KEYS } from "./storage";
 
 // "TV remote mode": arrow keys / Enter / Back drive the UI and the player.
-// Off by default; the Docker image turns it on via STREAMBERT_TV_MODE=1.
+// Off until turned on in Settings.
 
 const CHANGED_EVENT = "streambert:tv-remote-settings-changed";
 
-export function resolveTvRemoteMode(stored, envDefault) {
-  if (typeof stored === "boolean") return stored;
-  return envDefault === true;
-}
-
-// Value to store on save, or undefined when the toggle wasn't changed (so an
-// untouched setting keeps following the env default).
-export const tvRemoteModeToSave = (initial, current) =>
-  current !== initial ? current : undefined;
-
 export function isTvRemoteModeEnabled() {
-  return resolveTvRemoteMode(
-    storage.get(STORAGE_KEYS.TV_REMOTE_MODE),
-    globalThis.window?.electron?.envDefaults?.tvRemoteMode,
-  );
+  return storage.get(STORAGE_KEYS.TV_REMOTE_MODE) === true;
 }
 
 export function setTvRemoteModeEnabled(on) {
