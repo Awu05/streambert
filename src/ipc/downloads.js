@@ -760,6 +760,13 @@ function register(getMainWindow) {
             logPath: downloads[idx].logPath,
           });
           saveDownloads();
+          // Web profiles: a finished copy replaces this profile's older download
+          // of the same title (each download has its own folder, so remove it).
+          if (code === 0 && profileId) {
+            for (const old of downloads.filter((d) => d.profileId === profileId && isSameMedia(d) && !activeProcs.has(d.id))) {
+              deleteOwnedDownload(old.id);
+            }
+          }
         });
 
         return { ok: true, id };

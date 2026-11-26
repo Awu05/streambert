@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileDialog from "./ProfileDialog";
@@ -53,6 +53,7 @@ export default function ProfileMenu({ profile }) {
   const [open, setOpen] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const changed = useRef(false);
   const close = () => { setOpen(null); setError(null); };
   async function leave() {
     setBusy(true);
@@ -83,6 +84,10 @@ export default function ProfileMenu({ profile }) {
       </div>
     </ProfileDialog>}
     {open === "pin" && <MyPin profile={profile} onClose={close} />}
-    {open === "manage" && <ManageProfiles main={profile} onClose={close} />}
+    {open === "manage" && <ManageProfiles main={profile} onChanged={() => { changed.current = true; }} onClose={() => {
+      // Names, colours and kids limits may have changed, including this profile's.
+      if (changed.current) location.reload();
+      else close();
+    }} />}
   </>;
 }

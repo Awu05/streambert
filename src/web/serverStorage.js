@@ -67,6 +67,12 @@ export function createServerStorage({ initial, fixed = {}, post, batchMs = 200, 
       failures = 0;
       return true;
     } catch (error) {
+      // A change the server refuses (400/403) would fail forever and, merged
+      // with later changes, block every save after it, so it is dropped.
+      if (error.status >= 400 && error.status < 500 && ![408, 429].includes(error.status)) {
+        console.warn("Streambert refused a settings change:", error.message);
+        return false;
+      }
       pending.unshift(...sending);
       failures++;
       if (failures === 5) console.warn("Could not sync changes to Streambert:", error.message);

@@ -6,6 +6,7 @@ import { setGamepadFocus } from "../utils/gamepadSpatialNav";
 import { SETTINGS_TABS, tabForSection } from "../utils/settingsTabs";
 import { AGE_LIMIT_OPTIONS, canManageHousehold, isKidsProfile } from "../utils/profile";
 import SourcesSection from "../components/settings/SourcesSection";
+import Toggle from "../components/Toggle";
 import UpdateModal from "../components/UpdateModal";
 import {
   storage,
@@ -384,45 +385,6 @@ function ConfirmDialog({
 }
 
 // ── Toggle Switch ─────────────────────────────────────────────────────────────
-function Toggle({ value, onChange, title, disabled }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={!!value}
-      aria-label={title}
-      disabled={disabled}
-      onClick={() => onChange(!value)}
-      title={title}
-      style={{
-        background: value ? "var(--red)" : "var(--surface2)",
-        border: "1px solid " + (value ? "var(--red)" : "var(--border)"),
-        borderRadius: 20,
-        width: 40,
-        height: 22,
-        cursor: "pointer",
-        position: "relative",
-        flexShrink: 0,
-        transition: "background 0.2s, border-color 0.2s",
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: value ? 20 : 2,
-          width: 16,
-          height: 16,
-          background: "#fff",
-          borderRadius: "50%",
-          transition: "left 0.2s",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-        }}
-      />
-    </button>
-  );
-}
-
 // ── Status Badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   if (!status) return null;
@@ -3474,12 +3436,12 @@ function DownloadCleanupSettings({ readOnly }) {
     <h2 className="settings-section-title">{t("profiles.downloads.cleanup")}</h2>
     <p>{t("profiles.downloads.help")}</p>
     {readOnly && <p>{t("profiles.managed")}</p>}
-    <label><input type="checkbox" checked={daysOn} disabled={readOnly}
-      onChange={(event) => setDaysOn(event.target.checked)} />{t("profiles.downloads.days", { count: Number(days) })}</label>
+    <div className="profile-toggle"><span>{t("profiles.downloads.days", { count: Number(days) })}</span>
+      <Toggle value={daysOn} disabled={readOnly} title={t("profiles.downloads.days", { count: Number(days) })} onChange={setDaysOn} /></div>
     <input className="apikey-input" type="number" min="1" max="90" value={days} required
       aria-label={t("profiles.downloads.dayUnits")} disabled={readOnly || !daysOn} onChange={(event) => setDays(event.target.value)} />
-    <label><input type="checkbox" checked={limitOn} disabled={readOnly}
-      onChange={(event) => setLimitOn(event.target.checked)} />{t("profiles.downloads.limit")}</label>
+    <div className="profile-toggle"><span>{t("profiles.downloads.limit")}</span>
+      <Toggle value={limitOn} disabled={readOnly} title={t("profiles.downloads.limit")} onChange={setLimitOn} /></div>
     <input className="apikey-input" type="number" min="1" max="100000" value={limit} required
       aria-label={t("profiles.downloads.gbUnits")} disabled={readOnly || !limitOn} onChange={(event) => setLimit(event.target.value)} />
     {!readOnly && <div className="profile-actions">

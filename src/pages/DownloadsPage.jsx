@@ -14,6 +14,7 @@ import { storage, isElectron, STORAGE_KEYS, formatBytes } from "../utils/storage
 import { isMainProfile } from "../utils/profile";
 import { filterByOwner, groupByOwner, sortDownloads } from "../utils/downloadAdmin";
 import ProfileAvatar from "../web/profiles/ProfileAvatar";
+import ConfirmPrompt from "../web/profiles/ConfirmPrompt";
 import { listProfiles } from "../web/profiles/profilesApi";
 import SubtitleDownloaderModal from "../components/SubtitleDownloaderModal";
 import { imgUrl } from "../utils/api";
@@ -116,6 +117,7 @@ export default function DownloadsPage({
   const [selectedIds, setSelectedIds] = useState([]);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [fileExistsCache, setFileExistsCache] = useState({});
   const [localFiles, setLocalFiles] = useState(
     () => canScan ? storage.get("localFiles") || [] : [],
@@ -262,9 +264,12 @@ export default function DownloadsPage({
     setSelectedIds([]);
   }
 
-  async function deleteMany(list) {
-    const size = formatBytes(list.reduce((sum, download) => sum + (download.sizeBytes ?? 0), 0));
-    if (!confirm(t("profiles.downloads.deleteConfirm", { count: list.length, size }))) return;
+  function deleteMany(list) {
+    if (list.length) setConfirmDelete(list);
+  }
+
+  async function deleteConfirmed(list) {
+    setConfirmDelete(null);
     setDeleting(true);
     setDeleteError(false);
     try {
@@ -478,6 +483,12 @@ export default function DownloadsPage({
           onClick={() => deleteMany(shown)}>{t("profiles.downloads.deleteShown")}</button>
       </div>}
       {deleteError && <p className="profile-error" role="alert">{t("profiles.downloads.deleteError")}</p>}
+      {confirmDelete && <ConfirmPrompt title={t("profiles.downloads.deleteSelected")} confirmLabel={t("profiles.delete")}
+        message={t("profiles.downloads.deleteConfirm", {
+          count: confirmDelete.length,
+          size: formatBytes(confirmDelete.reduce((sum, download) => sum + (download.sizeBytes ?? 0), 0)),
+        })}
+        onCancel={() => setConfirmDelete(null)} onConfirm={() => void deleteConfirmed(confirmDelete)} />}
 
       {/* ── Ctrl+K Search bar ─────────────────────────────────────────────── */}
       {searchOpen && (

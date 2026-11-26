@@ -49,9 +49,10 @@ function createProfileHandler({ profiles, auth, store, hub, beforeDelete = () =>
         if (!record) return false;
         const result = await profiles.setOwnPin(record.id, { current, pin, expectedVersion: record.version });
         if (pinError(res, result)) return true;
-        if (profiles.get(record.id).version !== record.version) invalidate(record.id);
-        res.setHeader("Set-Cookie", cookie("sb_profile", "", 0));
-        res.writeHead(204).end();
+        // Other devices in this profile go back to the picker; this one stays in.
+        const latest = profiles.get(record.id);
+        if (latest.version !== record.version) invalidate(record.id);
+        choose(res, cookie, latest, session);
       } else if (manage) {
         const data = await readJson(req);
         if (profile && !profile.main) {

@@ -61,7 +61,11 @@ function createProfiles({ file, now = Date.now, scrypt = promisify(crypto.scrypt
     }
     for (const record of records) details(record, record.main);
   } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+    // A damaged registry isn't reset silently: that would drop every PIN and kids limit.
+    if (error.code !== "ENOENT") {
+      throw new Error(`Could not read ${file} (${error.message}). Fix it, or move it aside to start again ` +
+        "with one main profile (all PINs and kids settings are then reset; viewing data is kept).");
+    }
     save([{
       id: MAIN_ID, name: "Main", color: COLORS[0], kids: false, ageLimit: null,
       ratingCountry: null, main: true, version: 1, pin: null,

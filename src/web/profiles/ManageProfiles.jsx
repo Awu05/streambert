@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RATING_COUNTRIES } from "../../utils/ageRating";
 import { AGE_LIMIT_OPTIONS } from "../../utils/profile";
+import Toggle from "../../components/Toggle";
+import ConfirmPrompt from "./ConfirmPrompt";
 import PinPad from "./PinPad";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileDialog from "./ProfileDialog";
@@ -10,13 +12,14 @@ import { createProfile, deleteProfile, managedProfiles, profileError, updateProf
 const COLORS = ["#e50914", "#f5a623", "#2ecc71", "#1abc9c", "#3498db", "#9b59b6", "#e84393", "#7f8c8d"];
 const newProfile = { name: "", color: COLORS[0], kids: false, ageLimit: "7", ratingCountry: "" };
 
-export default function ManageProfiles({ main, onClose }) {
+export default function ManageProfiles({ main, onClose, onChanged }) {
   const { t } = useTranslation();
   const [pin, setPin] = useState(undefined);
   const [profiles, setProfiles] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [confirming, setConfirming] = useState(null);
 
   async function load(value) {
     setError(null);
@@ -34,6 +37,7 @@ export default function ManageProfiles({ main, onClose }) {
     setError(null);
     try {
       await operation();
+      onChanged?.();
       setDraft(null);
       await load(pin);
     } catch (problem) {
@@ -60,15 +64,16 @@ export default function ManageProfiles({ main, onClose }) {
         {error && <p className="profile-error" role="alert">{profileError(t, error)}</p>}
         {draft ? <form className="profile-form" onSubmit={save}>
           <label>{t("profiles.name")}<input autoFocus className="apikey-input" value={draft.name}
-            onChange={(event) => edit({ name: event.target.value })} maxLength={40} required /></label>
+            onChange={(event) => edit({ name: event.target.value })} maxLength={20} required /></label>
           <fieldset className="profile-colors">
             <legend>{t("profiles.color")}</legend>
             {COLORS.map((color, index) => <button type="button" key={color}
               aria-pressed={draft.color === color} aria-label={t("profiles.colorOption", { n: index + 1 })}
               style={{ "--profile-color": color }} onClick={() => edit({ color })} />)}
           </fieldset>
-          {!draft.main && <label className="profile-check"><input type="checkbox" checked={draft.kids}
-            onChange={(event) => edit({ kids: event.target.checked, ageLimit: draft.ageLimit ?? "7" })} />{t("profiles.kids")}</label>}
+          {!draft.main && <div className="profile-toggle"><span>{t("profiles.kids")}</span>
+            <Toggle value={draft.kids} title={t("profiles.kids")}
+              onChange={(kids) => edit({ kids, ageLimit: draft.ageLimit ?? "7" })} /></div>}
           {draft.kids && <>
             <label>{t("settings.content.maxAge")}<select value={draft.ageLimit} onChange={(event) => edit({ ageLimit: event.target.value })}>
               {AGE_LIMIT_OPTIONS.filter(({ value }) => value).map(({ value, labelKey }) => <option key={value} value={value}>{t(labelKey)}</option>)}
@@ -92,18 +97,20 @@ export default function ManageProfiles({ main, onClose }) {
               <button type="button" className="btn btn-secondary" disabled={busy}
                 onClick={() => setDraft(profile)}>{t("profiles.edit")}</button>
               {!profile.main && profile.hasPin && <button type="button" className="btn btn-ghost" disabled={busy}
-                onClick={() => {
-                  if (confirm(t("profiles.removePinConfirm", { name: profile.name }))) {
-                    void mutate(() => updateProfile(profile.id, { removePin: true }, pin));
-                  }
-                }}>{t("profiles.removePin")}</button>}
+                onClick={() => setConfirming({
+                  title: t("profiles.removePin"), label: t("profiles.removePin"),
+                  message: t("profiles.removePinConfirm", { name: profile.name }),
+                  action: () => updateProfile(profile.id, { removePin: true }, pin),
+                })}>{t("profiles.removePin")}</button>}
               {!profile.main && <button type="button" className="btn btn-ghost" disabled={busy}
                 onClick={() => {
                   const size = new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 })
                     .format(profile.downloadBytes / 1024 ** 2);
-                  if (confirm(t("profiles.deleteConfirm", { name: profile.name, size }))) {
-                    void mutate(() => deleteProfile(profile.id, pin));
-                  }
+                  setConfirming({
+                    title: t("profiles.delete"), label: t("profiles.delete"),
+                    message: t("profiles.deleteConfirm", { name: profile.name, size }),
+                    action: () => deleteProfile(profile.id, pin),
+                  });
                 }}>{t("profiles.delete")}</button>}
             </div>)}
           </div>
@@ -115,5 +122,11 @@ export default function ManageProfiles({ main, onClose }) {
           </div>
         </>}
       </>}
+    {confirming && <ConfirmPrompt title={confirming.title} message={confirming.message} confirmLabel={confirming.label}
+      onCancel={() => setConfirming(null)} onConfirm={() => {
+        const { action } = confirming;
+        setConfirming(null);
+        void mutate(action);
+      }} />}
   </ProfileDialog>;
 }
