@@ -323,7 +323,7 @@ if (serverConfig.enabled) {
   });
   const runtime = createServerRuntime({
     config: serverConfig, userData, root: __dirname, hub, openPage: capture.openPage,
-    getDownloads: downloadsIpc.getDownloads, hiAnimeUserAgent: hianimeIpc.USER_AGENT,
+    downloads: downloadsIpc, hiAnimeUserAgent: hianimeIpc.USER_AGENT,
     bootstrap: () => ({
       envDefaults: { ...ENV_DEFAULTS, zoom: 1, dragScroll: false },
       cleanUserAgent: buildCleanUserAgent(),
@@ -333,6 +333,7 @@ if (serverConfig.enabled) {
   const registry = captureIpc(ipcMain, {
     isPathAllowed: makePathGuard([serverConfig.downloadDir, userData, ...serverConfig.allowedDirs]),
     prepare: runtime.prepare,
+    override: runtime.override,
   });
   serverMode = { window: createWindowStub(hub, { route: runtime.routeEvent }), capture, runtime, registry };
 }
