@@ -28,7 +28,6 @@ Set these in `.env`, then run `docker compose up -d` to apply them.
 | `STREAMBERT_PASSWORD` | Required | Shared login password. Changing it signs every device out. |
 | `STREAMBERT_WEB_PORT` | `8080` | Port on the host. |
 | `STREAMBERT_MAX_HIDDEN_PAGES` | `2` | Provider pages used at once to find streams. New requests wait when all are in use. Resolved streams play independently of the limit. |
-| `STREAMBERT_TV_MODE` | `0` | `1` starts with TV remote navigation on. Each device can still turn it off in Settings. |
 | `STREAMBERT_LOW_RAM` | `1` | Limits memory use, including at most 3 Chromium renderer processes. Set `0` when `STREAMBERT_MAX_HIDDEN_PAGES` is above 2. |
 | `PUID` and `PGID` | `1000` | User and group that own `./config` and `./downloads`. |
 | `TZ` | `Etc/UTC` | Server time zone. |
@@ -44,7 +43,7 @@ The browser sources are VidFast and Aether for movies and TV, VidNest for TV, an
 
 - **Phones:** the app switches to a phone layout with a bottom tab bar. iPhones need iOS 17.1 or later for the best playback. If the browser blocks autoplay with sound, the video starts muted with a **Tap to unmute** button.
 - **Subtitles:** HiAnime subtitles and the subtitles of downloads start on. Change them in **Options → Subtitles**, or search for more in **Options → Find subtitles** (needs a Wyzie key in Settings).
-- **TVs:** turn on TV remote mode (or set `STREAMBERT_TV_MODE=1`). In the player, OK plays and pauses, Left and Right skip 10 seconds, Up moves to the player controls, and Back steps out of the controls, then closes the player.
+- **TVs:** turn on TV remote mode in **Settings**. In the player, OK plays and pauses, Left and Right skip 10 seconds, Up moves to the player controls, and Back steps out of the controls, then closes the player.
 - **Other apps:** **Options → Open in another app** launches VLC, Infuse, or the Android app chooser, or copies a link. Links expire after six hours, and progress isn't tracked there. [Infuse links](https://support.firecore.com/hc/en-us/articles/215090997-API-for-Third-Party-Apps-Services) · [Android browser intents](https://developer.chrome.com/docs/android/intents)
 - **Downloads:** downloaded files play in the browser from the Downloads page. Files the downloader saved as MPEG-TS are repackaged to MP4 (no re-encoding) the first time they're played, which takes a few seconds.
 

@@ -12,7 +12,6 @@ services:
       TZ: "${TZ:-Etc/UTC}"
       STREAMBERT_PASSWORD: "${STREAMBERT_PASSWORD:?Set STREAMBERT_PASSWORD in .env (see .env.example)}"
       STREAMBERT_MAX_HIDDEN_PAGES: "${STREAMBERT_MAX_HIDDEN_PAGES:-2}"
-      STREAMBERT_TV_MODE: "${STREAMBERT_TV_MODE:-0}"
       STREAMBERT_LOW_RAM: "${STREAMBERT_LOW_RAM:-1}"
     volumes:
       - ./config:/config     # server profile, library, watch history, credentials
