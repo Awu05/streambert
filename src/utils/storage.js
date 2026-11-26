@@ -2,17 +2,11 @@
 
 const PREFIX = "streambert_";
 
-export const storage = {
+const localBackend = {
   get(key) {
     try {
-      let raw = localStorage.getItem(PREFIX + key);
-      // Legacy AllManga → HiAnime migration (settings saved by older versions)
-      if (!raw && key === "hianimeDubMode") {
-        raw = localStorage.getItem(PREFIX + "allmangaDubMode");
-      }
-      const value = raw ? JSON.parse(raw) : null;
-      if (key === "playerSource" && value === "allmanga") return "hianime";
-      return value;
+      const raw = localStorage.getItem(PREFIX + key);
+      return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
     }
@@ -37,9 +31,30 @@ export const storage = {
   },
 };
 
+// The browser build swaps in server-backed storage before the app loads.
+let backend = localBackend;
+export function setStorageBackend(value) {
+  backend = value;
+  isElectron = !!window.electron;
+}
+
+export const storage = {
+  get(key) {
+    let value = backend.get(key);
+    if (value === null && key === "hianimeDubMode") value = backend.get("allmangaDubMode");
+    if (key === "playerSource" && value === "allmanga") return "hianime";
+    return value;
+  },
+  set: (key, value) => backend.set(key, value),
+  remove: (key) => backend.remove(key),
+  clearAll: () => backend.clearAll(),
+  flush: () => backend.flush?.(),
+};
+
 // Centralised storage key registry
 export const STORAGE_KEYS = {
   API_KEY: "apikey",
+  UI_LANG: "uiLang",
   UPDATE_SOURCE: "updateSource",
   PLAYER_SOURCE: "playerSource",
   HIANIME_DUB_MODE: "hianimeDubMode",
@@ -104,6 +119,7 @@ export const STORAGE_KEYS = {
   DISCORD_RPC_SHOW_BUTTON: "discordRpcShowButton",
   // Controller / gamepad navigation
   GAMEPAD_ENABLED: "gamepadEnabled",
+  TV_REMOTE_MODE: "tvRemoteMode",
 };
 
 export const getApiKey = () => storage.get(STORAGE_KEYS.API_KEY);
@@ -142,7 +158,9 @@ export const clearFailoverSource = (epKey) => {
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 /** True when running inside Electron (contextBridge exposed). */
-export const isElectron = typeof window !== "undefined" && !!window.electron;
+// In the browser build this module can load before the bridge exists, so the
+// bridge is checked again when storage is set up (and at call time below).
+export let isElectron = typeof window !== "undefined" && !!window.electron;
 
 /** Format a byte count into a human-readable string. */
 export function formatBytes(bytes) {
@@ -165,19 +183,18 @@ export function formatBytes(bytes) {
 //   "subdlApiKey" - SubDL API key
 //   "wyzieApiKey" - Wyzie API key
 
-const _isElectronSecure =
-  typeof window !== "undefined" && !!window.electron?.secureGet;
+const _isElectronSecure = () => typeof window !== "undefined" && !!window.electron?.secureGet;
 
 export const secureStorage = {
   /** Read an encrypted value. Returns null if not set. */
   async get(key) {
-    if (!_isElectronSecure) return null;
+    if (!_isElectronSecure()) return null;
     return window.electron.secureGet(key);
   },
 
   /** Write an encrypted value. Pass null/empty to delete. */
   async set(key, value) {
-    if (!_isElectronSecure) return;
+    if (!_isElectronSecure()) return;
     return window.electron.secureSet(key, value ?? "");
   },
 };

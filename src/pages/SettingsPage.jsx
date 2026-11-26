@@ -1,3 +1,4 @@
+import { hasCapability, isWebBuild } from "../utils/capabilities";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { UI_LANGUAGES, resolveLanguage } from "../i18n";
@@ -34,6 +35,11 @@ import {
 } from "../utils/homeLayout";
 import { collectBackupData, restoreBackupData } from "../utils/backup";
 import { formatBytes } from "../utils/storage";
+import {
+  isTvRemoteModeEnabled,
+  setTvRemoteModeEnabled,
+  tvRemoteModeToSave,
+} from "../utils/tvRemoteMode";
 
 // ── Custom Select ─────────────────────────────────────────────────────────────
 function SettingsSelect({ value, onChange, options, style }) {
@@ -1197,12 +1203,13 @@ function BackupRestoreSection({ onRestored }) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const backup = JSON.parse(ev.target.result);
         if (!backup?.data)
           throw new Error(t("settings.backup.invalidFile"));
         restoreBackupData(backup.data);
+        await storage.flush();
         setRestoreStatus(t("settings.backup.restored"));
         setTimeout(() => window.location.reload(), 1200);
         onRestored?.();
@@ -1286,7 +1293,7 @@ function BackupRestoreSection({ onRestored }) {
           </span>
         )}
       </div>
-      <ScheduledBackupSection />
+      {hasCapability("scheduledBackup") && <ScheduledBackupSection />}
     </div>
   );
 }
@@ -1310,6 +1317,8 @@ function AppearanceSection() {
   const [gamepadEnabled, setGamepadEnabled] = useState(
     () => storage.get(STORAGE_KEYS.GAMEPAD_ENABLED) !== false,
   );
+  const [tvRemote, setTvRemote] = useState(isTvRemoteModeEnabled);
+  const tvRemoteSaved = useRef(tvRemote);
   const [accentInPlayer, setAccentInPlayer] = useState(
     () => storage.get(STORAGE_KEYS.ACCENT_IN_PLAYER) !== false,
   );
@@ -1368,6 +1377,11 @@ function AppearanceSection() {
     storage.set(STORAGE_KEYS.REDUCE_ANIMATIONS, noAnim ? 1 : 0);
     storage.set(STORAGE_KEYS.GAMEPAD_ENABLED, gamepadEnabled);
     window.dispatchEvent(new CustomEvent("streambert:gamepad-settings-changed"));
+    const tvRemoteChange = tvRemoteModeToSave(tvRemoteSaved.current, tvRemote);
+    if (tvRemoteChange !== undefined) {
+      setTvRemoteModeEnabled(tvRemoteChange);
+      tvRemoteSaved.current = tvRemoteChange;
+    }
     storage.set(STORAGE_KEYS.THEME, theme);
     if (theme === "custom") {
       storage.set(STORAGE_KEYS.CUSTOM_THEME_VARS, customVars);
@@ -1718,6 +1732,20 @@ function AppearanceSection() {
             </div>
             <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
               {t("settings.appearance.controllerDesc")}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Toggle value={tvRemote} onChange={setTvRemote} />
+          <div>
+            <div
+              style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}
+            >
+              TV remote / keyboard navigation
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+              Use arrow keys and Enter (TV remotes) to move around and control
+              playback: Enter play/pause, ←/→ seek, ↓ twice or Back to exit.
             </div>
           </div>
         </div>
@@ -3061,6 +3089,7 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
 
   return (
     <div
+      className="settings-topbar"
       style={{
         position: "sticky",
         top: 0,
@@ -3391,7 +3420,7 @@ function SettingsTopBar({ sectionRefs, contentRef }) {
                 padding: 6,
               }}
             >
-              {SECTION_NAV.map((s) => (
+              {SECTION_NAV.filter((section) => hasCapability("discord") || section.id !== "discordRpc").map((s) => (
                 <button
                   key={s.id}
                   onMouseDown={() => scrollTo(s.id)}
@@ -3743,7 +3772,7 @@ export default function SettingsPage({
 
       <div
         ref={contentRef}
-        className="fade-in"
+        className="fade-in settings-content"
         style={{ padding: "40px 48px 80px" }}
       >
         {/* Page title */}
@@ -3771,7 +3800,7 @@ export default function SettingsPage({
           />
 
           {/* Version & Updates */}
-          <VersionSection />
+          {hasCapability("updater") && <VersionSection />}
 
           <Divider />
 
@@ -4370,6 +4399,7 @@ export default function SettingsPage({
             <div className="settings-section-title">
               {t("settings.downloads.folderTitle")}
             </div>
+            {isWebBuild() ? <p><code>{downloadPath}</code> is set by the server.</p> : <>
             <div
               style={{
                 fontSize: 13,
@@ -4414,6 +4444,7 @@ export default function SettingsPage({
                 {t("settings.downloads.noFolder")}
               </div>
             )}
+            </>}
           </div>
         </div>
 
@@ -4431,13 +4462,13 @@ export default function SettingsPage({
         {/* ══════════════════════════════════════════════════════════════════ */}
         {/* GROUP: DISCORD RICH PRESENCE                                       */}
         {/* ══════════════════════════════════════════════════════════════════ */}
-        <div ref={secDiscordRpc} style={{ scrollMarginTop: 80 }}>
+        {hasCapability("discord") && <div ref={secDiscordRpc} style={{ scrollMarginTop: 80 }}>
           <SectionGroupHeader
             title={t("settings.groups.discordRpc.title")}
             subtitle={t("settings.groups.discordRpc.subtitle")}
           />
           <DiscordRpcSection />
-        </div>
+        </div>}
 
         {/* ══════════════════════════════════════════════════════════════════ */}
         {/* GROUP: INTERFACE                                                   */}
@@ -4493,6 +4524,7 @@ export default function SettingsPage({
               overflow: "hidden",
             }}
           >
+            {hasCapability("desktop") && <>
             {/* Install location */}
             <div style={{ padding: "22px 24px" }}>
               <CleanRow
@@ -4508,6 +4540,7 @@ export default function SettingsPage({
 
             <div style={{ height: 1, background: "var(--border)" }} />
 
+            </>}
             {/* Cache */}
             <div style={{ padding: "22px 24px" }}>
               <CleanRow
@@ -4558,8 +4591,7 @@ export default function SettingsPage({
 
             <div style={{ height: 1, background: "var(--border)" }} />
 
-            {/* Full Reset */}
-            <div
+            {hasCapability("desktop") && <div
               style={{
                 padding: "22px 24px",
                 background: "rgba(229,9,20,0.03)",
@@ -4633,7 +4665,7 @@ export default function SettingsPage({
                   </button>
                 </div>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       </div>

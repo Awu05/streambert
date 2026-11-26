@@ -65,7 +65,7 @@ function isModalRoot(el) {
 
 function getScopeRoot() {
   const overlays = Array.from(
-    document.querySelectorAll('[class*="overlay"]'),
+    document.querySelectorAll('[class*="overlay"], [class*="backdrop"]'),
   ).filter((el) => isVisible(el) && isModalRoot(el));
   if (overlays.length === 0) return document;
   return overlays[overlays.length - 1];
@@ -127,6 +127,11 @@ export function confirmGamepadFocus() {
   return true;
 }
 
+// True while a modal/overlay scopes navigation (see getScopeRoot).
+export function hasActiveOverlay() {
+  return getScopeRoot() !== document;
+}
+
 // Best-effort dismiss for the B button while a modal is open. Returns false
 // if there's nothing to dismiss, so the caller can fall back to page-back.
 export function dismissActiveOverlay() {
@@ -180,6 +185,12 @@ export function moveGamepadFocus(direction) {
     return;
   }
 
+  const best = pickInDirection(from, candidates, direction);
+  if (best) setGamepadFocus(best);
+}
+
+// The candidate nearest to `from` in the pressed direction, or null.
+export function pickInDirection(from, candidates, direction) {
   const fromRect = from.getBoundingClientRect();
   const fromCenter = {
     x: fromRect.left + fromRect.width / 2,
@@ -207,8 +218,7 @@ export function moveGamepadFocus(direction) {
       best = el;
     }
   }
-
-  if (best) setGamepadFocus(best);
+  return best;
 }
 
 export function ensureInitialFocus() {

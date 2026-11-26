@@ -1,3 +1,4 @@
+import { hasCapability, isWebBuild } from "../utils/capabilities";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { CloseIcon, DownloadIcon, SettingsIcon, SubtitlesIcon } from "./Icons";
@@ -598,7 +599,7 @@ export default function DownloadModal({
       episode,
       posterPath: posterPath || null,
       tmdbId: tmdbId || mediaId || null,
-    });
+    }).catch((error) => ({ ok: false, error: error.message }));
 
     if (result.ok) {
       onDownloadStarted?.({
@@ -764,7 +765,7 @@ export default function DownloadModal({
               </div>
 
               {/* ── Open in external player ───────────────────────────────── */}
-              {isElectron && (
+              {isElectron && hasCapability("externalPlayer") && (
                 <div
                   style={{
                     padding: "12px 20px",
@@ -1138,6 +1139,7 @@ export default function DownloadModal({
                   <div className="download-instructions-title">
                     {t("downloadModal.setup.title")}
                   </div>
+                  {isWebBuild() ? <p>The server downloader is unavailable.</p> : <>
                   <ol className="download-steps">
                     <li>
                       <Trans
@@ -1183,6 +1185,7 @@ export default function DownloadModal({
                       </span>
                     )}
                   </div>
+                  </>}
                   {checking && (
                     <div className="download-checking">
                       <div
@@ -1299,13 +1302,13 @@ export default function DownloadModal({
                         components={{ code: <code /> }}
                       />
                     </span>
-                    <button
+                    {hasCapability("folderPicker") && <button
                       className="btn btn-ghost"
                       style={{ padding: "4px 10px", fontSize: 12 }}
                       onClick={() => setSettingPath(true)}
                     >
                       {t("downloadModal.ready.change")}
-                    </button>
+                    </button>}
                   </div>
                 </div>
               )}

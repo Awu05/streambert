@@ -1,3 +1,4 @@
+import { hasCapability, isWebBuild } from "../utils/capabilities";
 import { useState, useRef, useEffect } from "react";
 import { imgUrl } from "../utils/api";
 import { useSeasonalEvent } from "../components/seasonalEvents.jsx";
@@ -113,7 +114,12 @@ export default function Sidebar({
       </div>
 
       {canGoBack && (
-        <SideBtn onClick={onBack} icon={<BackIcon />} label="Back (Ctrl+Z)" />
+        <SideBtn
+          onClick={onBack}
+          icon={<BackIcon />}
+          label="Back (Ctrl+Z)"
+          navBack
+        />
       )}
 
       <SideBtn onClick={onSearch} icon={<SearchIcon />} label="Search  (⌘F)" />
@@ -228,7 +234,7 @@ export default function Sidebar({
           icon={<SettingsIcon />}
           label="Settings"
         />
-        <button
+        {hasCapability("windowControls") && <button
           className="sidebar-btn"
           onClick={() => window.electron?.quitApp?.()}
           title="Quit App"
@@ -236,17 +242,23 @@ export default function Sidebar({
         >
           <QuitIcon />
           <span className="tooltip">Quit App</span>
-        </button>
+        </button>}
+        {isWebBuild() && <button className="sidebar-btn" title="Log out" aria-label="Log out"
+          onClick={async () => {
+            const result = await fetch("/api/logout", { method: "POST" });
+            if (result.ok) location.replace("/login");
+          }}><QuitIcon /><span className="tooltip">Log out</span></button>}
       </div>
     </div>
   );
 }
 
-function SideBtn({ active, onClick, icon, label, badge }) {
+function SideBtn({ active, onClick, icon, label, badge, navBack }) {
   return (
     <button
       className={`sidebar-btn ${active ? "active" : ""}`}
       onClick={onClick}
+      data-nav-back={navBack ? "" : undefined}
       style={{ position: "relative" }}
     >
       {icon}

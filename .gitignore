@@ -2,5 +2,13 @@ node_modules/
 temp/
 download_config.ini
 dist/
+dist-web/
 *.zip
 *secret.txt
+
+# docker compose data
+config/
+downloads/
+
+# Docker settings with passwords (copy .env.example)
+.env

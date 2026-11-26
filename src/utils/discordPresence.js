@@ -1,3 +1,4 @@
+import { hasCapability } from "./capabilities";
 // ── Discord Rich Presence (renderer side) ──────────────────────────────────
 // Builds the small activity payload from whatever the user is currently
 // looking at and forwards it to the main process (src/ipc/discordRpc.js).
@@ -21,7 +22,7 @@ export function readDiscordRpcSettings() {
 
 /** Push the enabled/disabled state to the main process (connects/disconnects). */
 export function applyDiscordRpcEnabled(enabled) {
-  if (!isElectron || !window.electron?.discordRpcSetEnabled) return;
+  if (!hasCapability("discord") || !isElectron || !window.electron?.discordRpcSetEnabled) return;
   window.electron.discordRpcSetEnabled(!!enabled);
 }
 
@@ -51,7 +52,7 @@ function buttons(settings) {
  *   info.startedAt    - ms epoch timestamp the item was opened
  */
 export function sendWatchingActivity(info, settings) {
-  if (!isElectron || !window.electron?.discordRpcUpdateActivity) return;
+  if (!hasCapability("discord") || !isElectron || !window.electron?.discordRpcUpdateActivity) return;
   if (!settings.enabled) return;
 
   const activity = {
@@ -73,7 +74,7 @@ export function sendWatchingActivity(info, settings) {
 }
 
 export function sendIdleActivity(settings) {
-  if (!isElectron || !window.electron?.discordRpcUpdateActivity) return;
+  if (!hasCapability("discord") || !isElectron || !window.electron?.discordRpcUpdateActivity) return;
   if (!settings.enabled) return;
 
   const activity = {
@@ -88,6 +89,6 @@ export function sendIdleActivity(settings) {
 }
 
 export function clearActivity() {
-  if (!isElectron || !window.electron?.discordRpcUpdateActivity) return;
+  if (!hasCapability("discord") || !isElectron || !window.electron?.discordRpcUpdateActivity) return;
   window.electron.discordRpcUpdateActivity(null);
 }

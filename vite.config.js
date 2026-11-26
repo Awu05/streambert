@@ -3,10 +3,12 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig(({ mode }) => {
   const isDist = process.env.ELECTRON_DIST === "1";
+  const web = mode === "web";
   return {
     plugins: [react()],
-    base: "./",
+    base: web ? "/" : "./",
     build: {
+      ...(web ? { outDir: "dist-web" } : {}),
       minify: "terser",
       terserOptions: {
         compress: {

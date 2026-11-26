@@ -1,5 +1,7 @@
 import {
   useState,
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -85,6 +87,9 @@ import {
 } from "../utils/playerGamepadScript";
 import { useSourceId } from "../utils/useSourceId";
 import { setPlayerGamepadActive } from "../utils/gamepadPlayerState";
+import { useTvRemoteMode } from "../utils/tvRemoteMode";
+import { PLAYER_BACK_EVENT } from "../utils/useKeyboardNav";
+import { dismissActiveOverlay } from "../utils/gamepadSpatialNav";
 import HiAnimeLoader from "../components/HiAnimeLoader";
 
 // ── Partial-circle progress icon (cached per pct tier) ───────────────────────
@@ -410,6 +415,10 @@ function getDaysUntilRelease(airDate) {
   if (days <= 0) return i18n.t("tv.episodes.releasingToday");
   return i18n.t("tv.episodes.daysLeft", { count: days });
 }
+
+import { isWebBuild } from "../utils/capabilities";
+const BrowserMediaPlayer = import.meta.env.MODE === "web"
+  ? lazy(() => import("../components/BrowserMediaPlayer")) : null;
 
 export default function TVPage({
   item,
@@ -774,7 +783,7 @@ export default function TVPage({
 
   // Resolve HiAnime episode URL via main-process IPC (scraping, no CORS)
   useEffect(() => {
-    if (!playing || !selectedEp) return;
+    if (!playing || !selectedEp || isWebBuild()) return;
     const epNum = selectedEp.episode_number;
     const epKey = `tv_${item.id}_s${selectedSeason}_e${epNum}_${dubMode}`;
 
@@ -1596,10 +1605,31 @@ export default function TVPage({
       );
   }, []);
 
+  const tvRemote = useTvRemoteMode();
   useEffect(() => {
-    setPlayerGamepadActive(gamepadEnabled && playing);
+    setPlayerGamepadActive((gamepadEnabled || tvRemote) && playing);
     return () => setPlayerGamepadActive(false);
-  }, [playing, gamepadEnabled]);
+  }, [playing, gamepadEnabled, tvRemote]);
+
+  // TV remote mode: main handles player keys; it asks us to leave on Back.
+  useEffect(() => {
+    const wv = webviewRef.current;
+    if (!wv || !playing || !tvRemote) return;
+    const focus = () => wv.focus();
+    wv.addEventListener("dom-ready", focus);
+    focus();
+    // An open dialog closes first; otherwise leave the player
+    const stop = () => {
+      if (!dismissActiveOverlay()) setPlaying(false);
+    };
+    const h = window.electron?.onPlayerRemoteBack?.(stop);
+    window.addEventListener(PLAYER_BACK_EVENT, stop);
+    return () => {
+      wv.removeEventListener("dom-ready", focus);
+      window.removeEventListener(PLAYER_BACK_EVENT, stop);
+      if (h) window.electron.offPlayerRemoteBack(h);
+    };
+  }, [playing, tvRemote, playerSource]);
 
   useEffect(() => {
     const wv = webviewRef.current;
@@ -1873,7 +1903,24 @@ export default function TVPage({
             </div>
           </div>
 
-          {playing && selectedEp && (
+          {isWebBuild() && playing && selectedEp && !restricted && (
+            <Suspense fallback={null}><BrowserMediaPlayer key={`tv_${item.id}_s${selectedSeason}e${selectedEp.episode_number}`}
+              itemId={item.id} title={title} mediaType="tv" anime={isAnime}
+              season={selectedSeason} episode={selectedEp.episode_number} dubMode={dubMode} accent={playerAccentColor}
+              progressKey={`tv_${item.id}_s${selectedSeason}e${selectedEp.episode_number}`}
+              saveProgress={saveProgress} markWatched={onMarkWatched} watchedThreshold={watchedThreshold}
+              onClose={() => { resetAutoplay(); setPlaying(false); }} onResolved={setM3u8Url} onSubtitles={setInterceptedSubs}
+              onNext={nextEp ? playNow : undefined} onEnded={triggerAutoplay}
+              overlay={autoplayCountdown !== null && nextEp && (
+                <div className="web-player-next">
+                  Next episode{autoplayCountdown > 0 && ` in ${autoplayCountdown}s`}
+                  <button className="btn btn-primary" onClick={playNow}>Play now</button><button className="btn btn-ghost" onClick={cancelAutoplay}>Cancel</button>
+                </div>
+              )}
+              onDubModeChange={(mode) => { setDubMode(mode); storage.set(STORAGE_KEYS.HIANIME_DUB_MODE, mode); }}
+              onDownload={() => currentEpDownload ? onGoToDownloads?.(currentEpDownload.id) : setShowDownload(true)} /></Suspense>
+          )}
+          {!isWebBuild() && playing && selectedEp && (
             <div className="section">
               <div
                 style={{

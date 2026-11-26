@@ -1,0 +1,22 @@
+# Streambert: open http://<server>:8080 in a browser and sign in.
+# Settings come from .env (copy .env.example). See docker/README.md.
+services:
+  streambert:
+    build: .
+    image: ghcr.io/awu05/streambert:latest   # prebuilt; `--build` builds from source
+    container_name: streambert
+    shm_size: "1gb"          # required for Electron/Chromium
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      TZ: "${TZ:-Etc/UTC}"
+      STREAMBERT_PASSWORD: "${STREAMBERT_PASSWORD:?Set STREAMBERT_PASSWORD in .env (see .env.example)}"
+      STREAMBERT_MAX_HIDDEN_PAGES: "${STREAMBERT_MAX_HIDDEN_PAGES:-2}"
+      STREAMBERT_TV_MODE: "${STREAMBERT_TV_MODE:-0}"
+      STREAMBERT_LOW_RAM: "${STREAMBERT_LOW_RAM:-1}"
+    volumes:
+      - ./config:/config     # server profile, library, watch history, credentials
+      - ./downloads:/config/Downloads
+    ports:
+      - "${STREAMBERT_WEB_PORT:-8080}:8080"
+    restart: unless-stopped
