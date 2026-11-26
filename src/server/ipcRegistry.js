@@ -47,17 +47,21 @@ function canonicalPath(value) {
   }
 }
 
+const isInside = (file, root) => file === root || file.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+
+// True when a path is inside one of the roots, following symlinks. Paths that
+// aren't under a root as written are rejected before the file system is read.
 function makePathGuard(roots) {
   const normalize = (value) => process.platform === "win32" ? value.toLowerCase() : value;
   return (value) => {
     if (typeof value !== "string" || !value || value.includes("\0")) return false;
     if (process.platform === "win32" && path.parse(value).root.startsWith("\\")) return false;
     try {
-      const full = normalize(canonicalPath(value));
-      return roots.some((root) => {
-        const relative = path.relative(normalize(canonicalPath(root)), full);
-        return relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative);
-      });
+      const resolved = normalize(path.resolve(value));
+      const rootForms = roots.map((root) => [normalize(path.resolve(root)), normalize(canonicalPath(root))]);
+      if (!rootForms.some((forms) => forms.some((root) => isInside(resolved, root)))) return false;
+      const full = normalize(canonicalPath(resolved));
+      return rootForms.some(([, canonical]) => isInside(full, canonical));
     } catch {
       return false;
     }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-const cueText = (cue) => (cue.text || "").replace(/<[^>]*>/g, "").trim();
+// The cue's plain text, without WebVTT markup such as <i> or <b>.
+const cueText = (cue) => (cue.getCueAsHTML ? cue.getCueAsHTML().textContent : cue.text || "").trim();
 
 /**
  * The chosen subtitle track and its current line. The browser loads and times

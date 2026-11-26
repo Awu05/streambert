@@ -1,6 +1,9 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { promisify } = require("node:util");
+
+const scrypt = promisify(crypto.scrypt);
 
 function loadOrCreateSecret(filename) {
   try {
@@ -22,8 +25,9 @@ function loadOrCreateSecret(filename) {
 }
 
 function createAuth({ password, secret, now = Date.now }) {
-  const hash = (value) => crypto.createHash("sha256").update(value).digest();
-  const passwordHash = hash(password);
+  // scrypt keeps password guessing slow; the key also ties sessions to the password.
+  const passwordKey = crypto.scryptSync(password, secret, 32);
+  const passwordTag = passwordKey.toString("hex");
   const sign = (value) => crypto.createHmac("sha256", secret).update(value).digest("hex");
   const expiry = (seconds) => String(Math.floor(now() / 1000) + seconds);
   const verify = (value, exp, sig) => /^[0-9]{1,12}$/.test(exp || "") &&
@@ -31,15 +35,17 @@ function createAuth({ password, secret, now = Date.now }) {
     /^[a-f0-9]{64}$/.test(sig || "") &&
     crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(sign(value), "hex"));
   return {
-    checkPassword: (value) => typeof value === "string" && crypto.timingSafeEqual(hash(value), passwordHash),
+    async checkPassword(value) {
+      return typeof value === "string" && crypto.timingSafeEqual(await scrypt(value, secret, 32), passwordKey);
+    },
     issueSession() {
       const exp = expiry(2592000);
-      return `${exp}.${sign(`session:${passwordHash.toString("hex")}:${exp}`)}`;
+      return `${exp}.${sign(`session:${passwordTag}:${exp}`)}`;
     },
     verifySession(token) {
       if (typeof token !== "string") return false;
       const [exp, sig, extra] = token.split(".");
-      return extra === undefined && verify(`session:${passwordHash.toString("hex")}:${exp}`, exp, sig);
+      return extra === undefined && verify(`session:${passwordTag}:${exp}`, exp, sig);
     },
     signUrl(resource, seconds) {
       const exp = expiry(seconds);

@@ -111,6 +111,12 @@ async function startHttpServer({
   handleStream, handleApi,
 }) {
   const isStaticPath = makePathGuard([staticDir]);
+  const staticRoot = path.resolve(staticDir);
+  // A file in the web build for a request path, or null.
+  const staticFile = (pathname) => {
+    const file = path.resolve(staticRoot, "." + pathname);
+    return file.startsWith(staticRoot + path.sep) && isStaticPath(file) ? file : null;
+  };
   const loginHtml = loginPage(loginHtmlPath, staticDir);
   const server = http.createServer(async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -136,15 +142,15 @@ async function startHttpServer({
         return;
       }
       if (get && isPublicAsset(pathname)) {
-        const file = path.resolve(staticDir, "." + pathname);
-        if (isStaticPath(file) && await serveFile(res, file, { "Cache-Control": "public, max-age=86400" })) return;
+        const file = staticFile(pathname);
+        if (file && await serveFile(res, file, { "Cache-Control": "public, max-age=86400" })) return;
         return json(res, 404, { error: "Not found" });
       }
       const cookie = (value, age) => `sb_session=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}` +
         (origin.startsWith("https:") ? "; Secure" : "");
       if (post && pathname === "/api/login") {
         const { password } = await readJson(req);
-        if (!auth.checkPassword(password)) {
+        if (!await auth.checkPassword(password)) {
           await delay(1000);
           return json(res, 401, { error: "Wrong password" });
         }
@@ -189,15 +195,14 @@ async function startHttpServer({
       }
       if (api && await handleApi?.(req, res, { url, origin })) return;
       if (get && !api) {
-        const file = path.resolve(staticDir, "." + pathname);
-        if (isStaticPath(file)) {
-          if (await serveFile(res, file, {
-            "Cache-Control": pathname.startsWith("/assets/") ? "private, max-age=31536000, immutable" : "no-cache",
-          })) return;
-          if (!path.extname(pathname)) {
-            const index = path.join(staticDir, "index.html");
-            if (isStaticPath(index) && await serveFile(res, index, { "Cache-Control": "no-cache" })) return;
-          }
+        const file = staticFile(pathname);
+        if (file && await serveFile(res, file, {
+          "Cache-Control": pathname.startsWith("/assets/") ? "private, max-age=31536000, immutable" : "no-cache",
+        })) return;
+        // App routes (no file extension) get the single-page app.
+        if (!path.extname(pathname)) {
+          const index = staticFile("/index.html");
+          if (index && await serveFile(res, index, { "Cache-Control": "no-cache" })) return;
         }
       }
       json(res, 404, { error: "Not found" });
