@@ -11,13 +11,18 @@ const { createResolver } = require("./resolver");
 const { createStreamRegistry, createStreamHandler, streamLink } = require("./streams");
 const { createPlayHandler } = require("./playRoutes");
 const { createFileHandler } = require("./fileRoutes");
+const { createProfiles, MAIN_ID } = require("./profiles");
+const { createProfileHandler } = require("./profileRoutes");
+const { HOUSEHOLD_ID, HOUSEHOLD_KEYS } = require("./profileData");
 
 const WYZIE_ORIGINS = ["https://subs.wyzie.ru", "https://sub.wyzie.io"];
+const HOUSEHOLD_CREDENTIALS = new Set(["apikey", "subdlApiKey", "wyzieApiKey"]);
 
 function createServerRuntime({ config, userData, root, hub, openPage, bootstrap, getDownloads, hiAnimeUserAgent }) {
   const resolver = createResolver({ maxPages: config.maxHiddenPages, openPage });
   const streams = createStreamRegistry();
   const store = createProfileStore(userData);
+  const profiles = createProfiles({ file: path.join(userData, "profiles.json") });
   const isDownloadPath = makePathGuard([config.downloadDir]);
   const downloaderDir = config.allowedDirs[0] || "";
   const loopback = config.host === "0.0.0.0" ? "127.0.0.1" :
@@ -84,13 +89,25 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
   }
 
   // Server-side rules for IPC calls from the browser, applied before the handler runs.
-  function prepare(channel, args) {
-    const [value] = args;
+  function prepare(channel, args, { profile }) {
+      const [value] = args;
+    if (!profile.main && [
+      "check-downloader", "run-download", "get-downloads", "get-downloads-size", "delete-download",
+      "delete-all-downloads", "file-exists", "get-video-duration", "scan-directory",
+      "download-subtitles-for-file", "delete-subtitle-file", "prune-subtitle-paths",
+    ].includes(channel)) throw new RpcError(403, "Only the main profile can access downloads");
     switch (channel) {
       case "check-downloader":
         return [downloaderDir || undefined];
       case "run-download":
         return [downloadArgs(value)];
+      case "secure-store-set":
+        if (!profile.main) throw new RpcError(403, "Only the main profile can change household settings");
+        if (!HOUSEHOLD_CREDENTIALS.has(value?.key)) throw new RpcError(403, "Unknown household credential");
+        break;
+      case "secure-store-get":
+        if (!HOUSEHOLD_CREDENTIALS.has(value)) throw new RpcError(403, "Unknown household credential");
+        break;
       case "get-subtitle-url":
         assertSubtitleSources([{ file_id: value?.fileId }], true);
         break;
@@ -117,9 +134,32 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
 
   return {
     prepare,
+    routeEvent(channel) {
+      return channel === "download-progress" ? (id) => id === MAIN_ID : undefined;
+    },
     async start(registry) {
       fs.mkdirSync(config.downloadDir, { recursive: true });
       auth = createAuth({ password: config.password, secret: loadOrCreateSecret(path.join(userData, "server-secret")) });
+      if (config.resetMainPin && profiles.resetMainPin()) {
+        console.log("Main profile PIN removed (STREAMBERT_RESET_MAIN_PIN)");
+      }
+      const shared = {};
+      const migratedKeys = [];
+      for (const key of HOUSEHOLD_KEYS) {
+        const legacy = store.getValue(MAIN_ID, key);
+        if (legacy === undefined) continue;
+        migratedKeys.push(key);
+        if (store.getValue(HOUSEHOLD_ID, key) === undefined) shared[key] = legacy;
+      }
+      if (Object.keys(shared).length) {
+        store.apply(HOUSEHOLD_ID, { set: shared });
+        await store.flush();
+      }
+      if (migratedKeys.length) {
+        store.apply(MAIN_ID, { remove: migratedKeys });
+        await store.flush();
+      }
+      const handleProfiles = createProfileHandler({ profiles, auth, store, hub });
       const tester = createSourceTester({
         resolve: (input, { clientId }) => resolver.resolve(input, { clientId, fresh: true }),
         resolveHianime: (args) => registry.invokeRegistered("resolve-hianime", [args], { send() {} }),
@@ -127,7 +167,7 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
       });
       const handlePlay = createPlayHandler({
         resolver, streams, auth, registry, hub, hiAnimeUserAgent, tester,
-        getSources: () => loadSources(store.getValue("default", "playerSources")),
+        getSources: () => loadSources(store.getValue(HOUSEHOLD_ID, "playerSources")),
       });
       const handleFile = createFileHandler({ getDownloads, isPathAllowed: isDownloadPath, auth });
       const handleStream = createStreamHandler({ streams, auth, authorizeUrl: authorizePublicUrl });
@@ -135,11 +175,11 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
         port: config.port, host: config.host,
         staticDir: path.join(root, "dist-web"),
         loginHtmlPath: path.join(root, "src/server/login.html"),
-        auth, registry, hub, store,
+        auth, registry, hub, store, profiles, handleProfiles,
         bootstrap: () => ({ ...bootstrap(), downloadDir: config.downloadDir, downloaderDir }),
         // Streams and downloads accept signed links, so they're handled before sign-in.
         handleStream: async (req, res, context) => await handleStream(req, res, context) ||
-          await handleFile(req, res, context),
+          ((!context.signedIn || context.profile?.main) && await handleFile(req, res, context)),
         handleApi: handlePlay,
       });
       timer = setInterval(() => {
@@ -147,6 +187,7 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
         resolver.sweep();
       }, 60000);
       timer.unref();
+      return server;
     },
     async close() {
       clearInterval(timer);

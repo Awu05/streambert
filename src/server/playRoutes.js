@@ -51,7 +51,7 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
     });
   }
 
-  return async function handlePlay(req, res, { url, origin }) {
+  return async function handlePlay(req, res, { url, origin, profile, currentProfile }) {
     if (req.method === "GET" && url.pathname === "/api/subtitle") {
       const target = url.searchParams.get("u");
       try {
@@ -65,7 +65,16 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
     const testing = url.pathname === "/api/sources/test";
     if (req.method !== "POST" || !(testing || url.pathname.startsWith("/api/play/"))) return false;
     const body = (await readJson(req)) ?? {};
+    if (currentProfile && !currentProfile()) {
+      json(res, 409, { error: "Choose a profile", code: "profile" });
+      return true;
+    }
+    const clientId = !profile || hub.clientMatches(body.clientId, profile.id) ? body.clientId : undefined;
     if (testing) {
+      if (profile && !profile.main) {
+        json(res, 403, { error: "Only the main profile can test sources" });
+        return true;
+      }
       const result = validateSource(body.entry);
       if (!result.ok) {
         json(res, 400, { error: "Invalid source", errors: result.errors });
@@ -103,17 +112,17 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
           json(res, 400, { error: "This source is unavailable for this media type" });
           break;
         }
-        const clientId = `${body.clientId || ""}:${randomUUID()}`;
+        const jobId = `${clientId || ""}:${randomUUID()}`;
         const onClose = () => {
-          if (!res.writableEnded) resolver.cancel(clientId);
+          if (!res.writableEnded) resolver.cancel(jobId);
         };
         res.once("close", onClose);
         try {
           const media = await resolver.resolve({
             url: pageUrl, cleanUa: source.cleanUserAgent, clickFirst: source.clickFirst,
           }, {
-            clientId,
-            onQueue: (position) => hub.sendTo(body.clientId, "play-queue", { position, requestId: body.requestId }),
+            clientId: jobId,
+            onQueue: (position) => hub.sendTo(clientId, "play-queue", { position, requestId: body.requestId }),
           });
           await authorizePublicUrl(media.url);
           respond(res, origin, media);
@@ -130,7 +139,7 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
           break;
         }
         const result = await registry.invokeRegistered(
-          "resolve-hianime", [body.args], hub.clientFor(body.clientId),
+          "resolve-hianime", [body.args], hub.clientFor(clientId),
         );
         if (!result?.ok) {
           json(res, 422, { error: result?.error || "Could not resolve HiAnime" });

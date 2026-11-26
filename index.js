@@ -334,7 +334,7 @@ if (serverConfig.enabled) {
     isPathAllowed: makePathGuard([serverConfig.downloadDir, userData, ...serverConfig.allowedDirs]),
     prepare: runtime.prepare,
   });
-  serverMode = { window: createWindowStub(hub), capture, runtime, registry };
+  serverMode = { window: createWindowStub(hub, { route: runtime.routeEvent }), capture, runtime, registry };
 }
 
 // Single source of truth for the cleaned UA; the renderer reads it synchronously

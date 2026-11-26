@@ -22,6 +22,12 @@ function changeError(change, profile) {
   const keys = [...Object.keys(change.set ?? {}), ...Object.keys(change.merge ?? {}), ...(change.remove ?? [])];
   if (!profile.main && keys.some((key) => HOUSEHOLD_KEYS.includes(key))) return "household";
   if (profile.kids && keys.some((key) => KIDS_LOCKED_KEYS.includes(key))) return "kidsLocked";
+  for (const [key, max] of [["downloadCleanupDays", 90], ["downloadSpaceLimitGb", 100000]]) {
+    if (Object.hasOwn(change.merge ?? {}, key)) return "invalidCleanupSetting";
+    if (!Object.hasOwn(change.set ?? {}, key)) continue;
+    const value = change.set[key];
+    if (!Number.isInteger(value) || value < 0 || value > max) return "invalidCleanupSetting";
+  }
   return null;
 }
 

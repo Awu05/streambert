@@ -141,10 +141,12 @@ function createProfiles({ file, now = Date.now, scrypt = promisify(crypto.scrypt
         ratingCountry: ratingCountry === undefined ? current.ratingCountry : ratingCountry,
       }, current.main);
       const cleared = removePin === true && current.pin !== null;
+      const restrictionChanged = fields.kids !== current.kids || fields.ageLimit !== current.ageLimit ||
+        fields.ratingCountry !== current.ratingCountry;
       const record = {
         ...current, ...fields,
         pin: cleared ? null : current.pin,
-        version: cleared ? current.version + 1 : current.version,
+        version: cleared || restrictionChanged ? current.version + 1 : current.version,
       };
       replace(record);
       if (cleared) fails.delete(id);
