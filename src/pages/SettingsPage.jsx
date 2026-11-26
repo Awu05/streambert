@@ -3452,6 +3452,43 @@ function SettingsTopBar({ sectionRefs, contentRef, selectTab }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+function DownloadCleanupSettings({ readOnly }) {
+  const { t } = useTranslation();
+  const storedDays = storage.get("downloadCleanupDays") ?? 7;
+  const storedLimit = storage.get("downloadSpaceLimitGb") ?? 0;
+  const [daysOn, setDaysOn] = useState(storedDays > 0);
+  const [limitOn, setLimitOn] = useState(storedLimit > 0);
+  const [days, setDays] = useState(storedDays || 7);
+  const [limit, setLimit] = useState(storedLimit || 100);
+  const [feedback, setFeedback] = useState(null);
+
+  async function save(event) {
+    event.preventDefault();
+    storage.set("downloadCleanupDays", daysOn ? Number(days) : 0);
+    storage.set("downloadSpaceLimitGb", limitOn ? Number(limit) : 0);
+    const saved = await window.electron.flushStorage();
+    setFeedback(saved ? "settings.common.savedCheck" : "profiles.errors.requestFailed");
+  }
+
+  return <form className="profile-cleanup" onSubmit={save}>
+    <h2 className="settings-section-title">{t("profiles.downloads.cleanup")}</h2>
+    <p>{t("profiles.downloads.help")}</p>
+    {readOnly && <p>{t("profiles.managed")}</p>}
+    <label><input type="checkbox" checked={daysOn} disabled={readOnly}
+      onChange={(event) => setDaysOn(event.target.checked)} />{t("profiles.downloads.days", { count: Number(days) })}</label>
+    <input className="apikey-input" type="number" min="1" max="90" value={days} required
+      aria-label={t("profiles.downloads.dayUnits")} disabled={readOnly || !daysOn} onChange={(event) => setDays(event.target.value)} />
+    <label><input type="checkbox" checked={limitOn} disabled={readOnly}
+      onChange={(event) => setLimitOn(event.target.checked)} />{t("profiles.downloads.limit")}</label>
+    <input className="apikey-input" type="number" min="1" max="100000" value={limit} required
+      aria-label={t("profiles.downloads.gbUnits")} disabled={readOnly || !limitOn} onChange={(event) => setLimit(event.target.value)} />
+    {!readOnly && <div className="profile-actions">
+      <button className="btn btn-primary" type="submit">{t("settings.common.save")}</button>
+      {feedback && <span role="status">{t(feedback)}</span>}
+    </div>}
+  </form>;
+}
+
 export default function SettingsPage({
   apiKey,
   onChangeApiKey,
@@ -4454,6 +4491,7 @@ export default function SettingsPage({
               )}
               </>}
             </div>
+            {isWebBuild() && <DownloadCleanupSettings readOnly={!household} />}
           </div>
         </div>}
 

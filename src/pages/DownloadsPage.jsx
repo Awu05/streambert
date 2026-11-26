@@ -10,7 +10,11 @@ import {
   WatchedIcon,
   SubtitlesIcon,
 } from "../components/Icons";
-import { storage, isElectron, STORAGE_KEYS } from "../utils/storage";
+import { storage, isElectron, STORAGE_KEYS, formatBytes } from "../utils/storage";
+import { isMainProfile } from "../utils/profile";
+import { filterByOwner, groupByOwner, sortDownloads } from "../utils/downloadAdmin";
+import ProfileAvatar from "../web/profiles/ProfileAvatar";
+import { listProfiles } from "../web/profiles/profilesApi";
 import SubtitleDownloaderModal from "../components/SubtitleDownloaderModal";
 import { imgUrl } from "../utils/api";
 
@@ -105,9 +109,16 @@ export default function DownloadsPage({
   onSearchClose,
 }) {
   const { t } = useTranslation();
+  const main = isMainProfile();
+  const canScan = !isWebBuild() || main;
+  const [owner, setOwner] = useState("all");
+  const [owners, setOwners] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
   const [fileExistsCache, setFileExistsCache] = useState({});
   const [localFiles, setLocalFiles] = useState(
-    () => storage.get("localFiles") || [],
+    () => canScan ? storage.get("localFiles") || [] : [],
   );
   const [scanning, setScanning] = useState(false);
   const [scanFolder, setScanFolder] = useState(
@@ -142,6 +153,13 @@ export default function DownloadsPage({
     storage.set(STORAGE_KEYS.DL_SHOW_UNTRACKED, showUntracked);
   }, [showUntracked]);
 
+  useEffect(() => {
+    if (!main) return;
+    let alive = true;
+    listProfiles().then(({ profiles }) => { if (alive) setOwners(profiles); }).catch(console.error);
+    return () => { alive = false; };
+  }, [main]);
+
   // Sync externally-triggered open (Ctrl+K from App.jsx)
   useEffect(() => {
     if (searchOpenProp) {
@@ -167,30 +185,33 @@ export default function DownloadsPage({
   }, [searchOpen]);
 
   // ── Stable derived lists ──────────────────────────────────────
-  const active = useMemo(
-    () => downloads.filter((d) => d.status === "downloading"),
-    [downloads],
-  );
+  const owned = useMemo(() => filterByOwner(downloads, owner), [downloads, owner]);
+  const groups = useMemo(() => new Map(groupByOwner(downloads).map((group) => [group.ownerId, group])), [downloads]);
+  const active = useMemo(() => {
+    const list = owned.filter((download) => download.status === "downloading");
+    return main && ["size", "date"].includes(sortBy) ? sortDownloads(list, sortBy, sortDir) : list;
+  }, [owned, main, sortBy, sortDir]);
 
   const finished = useMemo(
     () =>
-      downloads
+      owned
         .filter((d) => d.status !== "downloading")
         .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0)),
-    [downloads],
+    [owned],
   );
 
   const localFileItems = useMemo(
     () =>
-      localFiles.map((f) => ({
+      (canScan && owner === "all" ? localFiles : []).map((f) => ({
         id: f.filePath,
         name: f.name,
         filePath: f.filePath,
         size: f.size,
         status: "local",
         isLocalOnly: true,
+        sizeBytes: f.sizeBytes,
       })),
-    [localFiles],
+    [localFiles, owner, canScan],
   );
 
   const allLocalItemsRaw = useMemo(() => {
@@ -221,6 +242,7 @@ export default function DownloadsPage({
       ? step1.filter((d) => (d.name || "").toLowerCase().includes(q))
       : step1;
 
+    if (main && ["date", "size"].includes(sortBy)) return sortDownloads(step2, sortBy, sortDir);
     // 3. Sort (spread once here, not in render)
     return [...step2].sort((a, b) => {
       let cmp = 0;
@@ -231,7 +253,43 @@ export default function DownloadsPage({
         cmp = (a.mediaType || "local").localeCompare(b.mediaType || "local");
       return sortDir === "desc" ? -cmp : cmp;
     });
-  }, [allLocalItemsRaw, showUntracked, searchQuery, sortBy, sortDir]);
+  }, [allLocalItemsRaw, showUntracked, searchQuery, sortBy, sortDir, main]);
+
+  const shown = [...active, ...allLocalItems.filter((download) => !download.isLocalOnly)];
+  const selected = shown.filter((download) => selectedIds.includes(download.id));
+  function changeOwner(value) {
+    setOwner(value);
+    setSelectedIds([]);
+  }
+
+  async function deleteMany(list) {
+    const size = formatBytes(list.reduce((sum, download) => sum + (download.sizeBytes ?? 0), 0));
+    if (!confirm(t("profiles.downloads.deleteConfirm", { count: list.length, size }))) return;
+    setDeleting(true);
+    setDeleteError(false);
+    try {
+      const result = await window.electron.deleteAllDownloads({ ids: list.map(({ id }) => id) });
+      setDeleteError(!result?.ok || result.errors > 0);
+      window.dispatchEvent(new Event("streambert:downloads-refresh"));
+      setSelectedIds([]);
+    } catch {
+      setDeleteError(true);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function ownerLabel(download) {
+    const profile = owners.find(({ id }) => id === (download.profileId || "default"));
+    const name = profile?.name ?? download.ownerName ?? t("profiles.main");
+    return <label className="profile-download-owner">
+      <input type="checkbox" checked={selectedIds.includes(download.id)}
+        aria-label={t("profiles.downloads.select", { name: download.name })}
+        onChange={(event) => setSelectedIds((ids) => event.target.checked ? [...ids, download.id] : ids.filter((id) => id !== download.id))} />
+      <ProfileAvatar profile={{ name, color: profile?.color ?? download.ownerColor }} />
+      {name}
+    </label>;
+  }
 
   const q = searchQuery.trim().toLowerCase();
   const searchResultCount = q ? allLocalItems.length : null;
@@ -291,7 +349,7 @@ export default function DownloadsPage({
   }, [finished, onDeleteDownload, onUpdateDownload]);
 
   const handleScanFolder = useCallback(async () => {
-    if (!isElectron || !scanFolder) return;
+    if (!canScan || !isElectron || !scanFolder) return;
     setScanning(true);
     try {
       const files = await window.electron.scanDirectory(scanFolder);
@@ -319,7 +377,7 @@ export default function DownloadsPage({
     } finally {
       setScanning(false);
     }
-  }, [scanFolder, downloads, finished, onUpdateDownload]);
+  }, [canScan, scanFolder, downloads, finished, onUpdateDownload]);
 
   const handleDelete = useCallback(
     async (dl) => {
@@ -331,10 +389,14 @@ export default function DownloadsPage({
         )
       )
         return;
-      await window.electron.deleteDownload({
-        id: dl.id,
-        filePath: dl.filePath,
-      });
+      try {
+        const result = await window.electron.deleteDownload({ id: dl.id, filePath: dl.filePath });
+        if (isWebBuild() && !result?.ok) throw new Error(result?.error);
+      } catch (error) {
+        if (!isWebBuild()) throw error;
+        setDeleteError(true);
+        return;
+      }
       // Clean up persisted duration
       if (dl.id) storage.set(DURATION_PREFIX + dl.id, null);
       // Clean up persisted progress time
@@ -401,6 +463,21 @@ export default function DownloadsPage({
             })
           : t("downloads.subtitleNone", { completed: allLocalItemsRaw.length })}
       </div>
+      {main && <div className="profile-admin">
+        <label>{t("profiles.downloads.owner")}
+          <select value={owner} onChange={(event) => changeOwner(event.target.value)}>
+            <option value="all">{t("profiles.downloads.everyone")}</option>
+            {owners.map(({ id, name }) => <option key={id} value={id}>{t("profiles.downloads.ownerOption", {
+              name, count: groups.get(id)?.count ?? 0, size: formatBytes(groups.get(id)?.bytes ?? 0),
+            })}</option>)}
+          </select>
+        </label>
+        <button type="button" className="btn btn-secondary" disabled={!selected.length || deleting}
+          onClick={() => deleteMany(selected)}>{t("profiles.downloads.deleteSelected")}</button>
+        <button type="button" className="btn btn-ghost" disabled={!shown.length || deleting}
+          onClick={() => deleteMany(shown)}>{t("profiles.downloads.deleteShown")}</button>
+      </div>}
+      {deleteError && <p className="profile-error" role="alert">{t("profiles.downloads.deleteError")}</p>}
 
       {/* ── Ctrl+K Search bar ─────────────────────────────────────────────── */}
       {searchOpen && (
@@ -477,7 +554,7 @@ export default function DownloadsPage({
 
         {/* Right: untracked toggle + search shortcut hint */}
         <div className="dl-toolbar__group">
-          <button
+          {canScan && <button
             className={`dl-toolbar__toggle${showUntracked ? " dl-toolbar__toggle--on" : ""}`}
             onClick={() => setShowUntracked((v) => !v)}
             title={
@@ -490,7 +567,7 @@ export default function DownloadsPage({
             {untrackedCount > 0
               ? t("downloads.untrackedCount", { n: untrackedCount })
               : t("downloads.untracked")}
-          </button>
+          </button>}
           {!searchOpen && (
             <button
               className="dl-toolbar__search-hint"
@@ -522,8 +599,8 @@ export default function DownloadsPage({
             {t("downloads.active")}
           </div>
           <div className="dl-page__list">
-            {active.map((dl) => (
-              <ActiveCard
+            {active.map((dl) => {
+              const card = <ActiveCard
                 key={dl.id}
                 dl={dl}
                 onDelete={() => handleDelete(dl)}
@@ -543,8 +620,9 @@ export default function DownloadsPage({
                         })
                     : null
                 }
-              />
-            ))}
+              />;
+              return main ? <div className="profile-download-row" key={dl.id}>{ownerLabel(dl)}{card}</div> : card;
+            })}
           </div>
         </div>
       )}
@@ -555,6 +633,9 @@ export default function DownloadsPage({
             {t("downloads.localFiles")}
           </div>
           <div className="dl-page__scan-controls">
+            {main && <button className="btn btn-ghost btn--sm" onClick={handleScanFolder} disabled={scanning || !scanFolder}>
+              {scanning ? t("downloads.scanning") : t("downloads.scan")}
+            </button>}
             {isElectron && hasCapability("folderPicker") && (
               <>
                 <input
@@ -600,7 +681,7 @@ export default function DownloadsPage({
                       dl.episode
                     ? `tv_${dl.tmdbId}_s${dl.season}e${dl.episode}`
                     : null;
-              return (
+              const card = (
                 <LocalFileCard
                   key={dl.id}
                   dl={dl}
@@ -657,6 +738,9 @@ export default function DownloadsPage({
                   }
                 />
               );
+              return main && !dl.isLocalOnly ? <div className="profile-download-row" key={dl.id}>
+                {ownerLabel(dl)}{card}
+              </div> : card;
             })}
           </div>
         ) : (
