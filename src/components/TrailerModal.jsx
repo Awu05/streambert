@@ -59,6 +59,15 @@ const SETUP_JS = `
 })()
 `;
 
+// Only http(s) instance addresses are loaded into the trailer player.
+function isWebAddress(value) {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
 export default function TrailerModal({ trailerKey, title, onClose }) {
   const webviewRef = useRef(null);
   const [currentSrc, setCurrentSrc] = useState(null);
@@ -71,7 +80,7 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
     const list = [
       preferred,
       ...FALLBACK_INSTANCES.filter((i) => i !== preferred),
-    ];
+    ].filter(isWebAddress);
     instanceIndexRef.current += 1;
     const idx = instanceIndexRef.current;
     if (idx >= list.length) {
@@ -84,7 +93,9 @@ export default function TrailerModal({ trailerKey, title, onClose }) {
     const instance = list[idx];
     const label = instance.replace(/^https?:\/\//, "");
     setStatusMsg(idx === 0 ? "Loading trailer…" : `Trying ${label}…`);
-    setCurrentSrc(`${instance}/embed/${trailerKey}?autoplay=1&listen=0`);
+    const src = new URL(`${instance}/embed/${encodeURIComponent(trailerKey)}`);
+    src.search = "autoplay=1&listen=0";
+    setCurrentSrc(src.href);
   }, [trailerKey]);
 
   useEffect(() => {
