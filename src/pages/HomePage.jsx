@@ -177,10 +177,10 @@ export default function HomePage({
     ])
       .then(([moviesData, tvData]) => {
         const movies = (moviesData.results || [])
-          .slice(0, 8)
+          .slice(0, 10)
           .map((i) => ({ ...i, media_type: "movie" }));
         const tv = (tvData.results || [])
-          .slice(0, 8)
+          .slice(0, 10)
           .map((i) => ({ ...i, media_type: "tv" }));
         // Interleave movies and TV for variety
         const merged = [];
@@ -200,11 +200,11 @@ export default function HomePage({
 
   // Stable pre-built item arrays for carousels, capped at 10
   const trendingMovieItems = useMemo(
-    () => trending.slice(0, 10).map((i) => ({ ...i, media_type: "movie" })),
+    () => trending.slice(0, 20).map((i) => ({ ...i, media_type: "movie" })),
     [trending],
   );
   const trendingTVItems = useMemo(
-    () => trendingTV.slice(0, 10).map((i) => ({ ...i, media_type: "tv" })),
+    () => trendingTV.slice(0, 20).map((i) => ({ ...i, media_type: "tv" })),
     [trendingTV],
   );
 

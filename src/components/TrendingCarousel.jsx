@@ -1,11 +1,29 @@
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, memo } from "react";
 import { imgUrl, isAnimeContent } from "../utils/api";
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon } from "./Icons";
 
-const VISIBLE = 5;
-const HALF = Math.floor(VISIBLE / 2);
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const scaleAt = (distance) => Math.max(0.55, 1 - 0.15 * distance);
+
+// Poster size and slot positions for a track `width` px wide, the same for
+// every row. Posters grow with the width, and as many fit as the room allows
+// (at least two each side, which may peek past the edge), spread to the edges.
+function carouselLayout(width, edge) {
+  const card = Math.round(Math.min(220, Math.max(130, 120 + width * 0.04)));
+  const room = width / 2 - edge;
+  const gap = card * 0.12;
+  const xs = [0];
+  for (;;) {
+    const d = xs.length - 1;
+    const next = xs[d] + ((scaleAt(d) + scaleAt(d + 1)) * card) / 2 + gap;
+    if (d >= 2 && next + (scaleAt(d + 1) * card) / 2 > room) break;
+    xs.push(next);
+  }
+  const half = xs.length - 1;
+  const spare = (room - xs[half] - (scaleAt(half) * card) / 2) / half;
+  return { card, half, xs: xs.map((x, d) => x + Math.max(0, spare) * d) };
+}
 
 // Compute visibility ratio of el inside scrollRoot (or viewport)
 function visibilityRatio(el, scrollRoot) {
@@ -37,6 +55,7 @@ const RatingBadge = memo(function RatingBadge({ cert, restricted }) {
 const CarouselSlot = memo(function CarouselSlot({
   item,
   offset,
+  x,
   onSelect,
   onFocus,
   animating,
@@ -51,9 +70,9 @@ const CarouselSlot = memo(function CarouselSlot({
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
   const poster = imgUrl(item.poster_path, "w342");
 
-  const scale = isCenter ? 1 : abs === 1 ? 0.75 : 0.54;
-  const opacity = isCenter ? 1 : abs === 1 ? 0.65 : 0.35;
-  const tx = offset * 230;
+  const scale = scaleAt(abs);
+  const opacity = Math.max(0.3, 1 - 0.2 * abs);
+  const tx = Math.sign(offset) * x;
 
   // Stable date comparison — avoids new Date() on every render by caching today
   const rawDate = item.release_date || item.first_air_date;
@@ -82,7 +101,7 @@ const CarouselSlot = memo(function CarouselSlot({
       style={{
         transform: `translateX(${tx}px) scale(${scale})`,
         opacity,
-        zIndex: isCenter ? 10 : abs === 1 ? 6 : 2,
+        zIndex: 10 - abs,
         cursor: "pointer",
         pointerEvents: "auto",
       }}
@@ -167,6 +186,26 @@ export default function TrendingCarousel({
   const containerRef = useRef(null);
   const animTimeout = useRef(null);
   const sectionRef = useRef(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [edge, setEdge] = useState(0);
+
+  // Track the carousel's width so the layout fills it.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => {
+      setTrackWidth(el.clientWidth);
+      setEdge((el.querySelector(".carousel-btn")?.offsetWidth || 0) + 32);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [count > 0]);
+
+  const layout = useMemo(() => carouselLayout(trackWidth, edge), [trackWidth, edge]);
+  // A row with few titles shows fewer slots rather than repeating any.
+  const half = Math.min(layout.half, Math.floor((count - 1) / 2));
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -327,19 +366,18 @@ export default function TrendingCarousel({
   // Stable slot array — only rebuilt when active or count changes
   const slots = useMemo(
     () =>
-      Array.from({ length: VISIBLE }, (_, i) => {
-        const offset = i - HALF;
+      Array.from({ length: half * 2 + 1 }, (_, i) => {
+        const offset = i - half;
         const idx = (((active + offset) % count) + count) % count;
         return { offset, idx };
       }),
-    [active, count],
+    [active, count, half],
   );
 
   // Stable per-slot onSelect/onFocus handlers — keyed by offset so memo works
   const slotHandlers = useMemo(() => {
     const handlers = {};
-    for (let i = 0; i < VISIBLE; i++) {
-      const offset = i - HALF;
+    for (let offset = -half; offset <= half; offset++) {
       const idx = (((active + offset) % count) + count) % count;
       if (offset === 0) {
         handlers[offset] = {
@@ -358,7 +396,7 @@ export default function TrendingCarousel({
       }
     }
     return handlers;
-  }, [active, count, items, onSelect, go, resetInterval]);
+  }, [active, count, items, onSelect, go, resetInterval, half]);
 
   const activeItem = items[active];
   const activeType = activeItem?.media_type === "tv" ? "tv" : "movie";
@@ -385,6 +423,7 @@ export default function TrendingCarousel({
       <div
         className="carousel-wrapper"
         ref={containerRef}
+        style={{ "--carousel-card": `${layout.card}px` }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
@@ -408,6 +447,7 @@ export default function TrendingCarousel({
                 key={offset}
                 item={items[idx]}
                 offset={offset}
+                x={layout.xs[Math.abs(offset)]}
                 onSelect={h.onSelect}
                 onFocus={h.onFocus}
                 animating={animating}

@@ -91,9 +91,7 @@
     background: linear-gradient(to top, var(--bg) 0%, color-mix(in srgb, var(--bg) 85%, transparent) 45%, transparent 100%);
   }
 
-  /* ── Home carousels: scale the coverflow so neighbours peek in ───────── */
-  .carousel-wrapper { height: 250px; }
-  .carousel-track { transform: scale(0.8); }
+  /* ── Home carousels: swipe instead of arrow buttons ─────────────────── */
   .carousel-btn { display: none; }
 
   /* ── Movie / series pages ────────────────────────────────────────────── */
