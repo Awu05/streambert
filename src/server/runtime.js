@@ -222,7 +222,7 @@ function createServerRuntime({ config, userData, root, hub, openPage, bootstrap,
         await store.flush();
       }
       const handleProfiles = createProfileHandler({
-        profiles, auth, store, hub,
+        profiles, auth, store, hub, appVersion: bootstrap().appVersion,
         downloadBytes: (id) => getDownloads().filter((entry) => ownerOf(entry) === id)
           .reduce((sum, entry) => sum + sizeOf(entry), 0),
         beforeDelete(id) {

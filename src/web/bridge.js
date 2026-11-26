@@ -91,7 +91,7 @@ export function installWebBridge(boot, {
     isWeb: true,
     profile: boot.profile,
     flushStorage,
-    cleanUserAgent: boot.cleanUserAgent, envDefaults: boot.envDefaults,
+    cleanUserAgent: boot.cleanUserAgent, envDefaults: boot.envDefaults, appVersion: boot.appVersion,
     capabilities: {
       desktop: false, pip: false, externalPlayer: false, folderPicker: false,
       updater: false, discord: false, windowControls: false, scheduledBackup: false,

@@ -12,6 +12,7 @@ import "../../styles/profiles.css";
 export default function ProfileGate() {
   const { t } = useTranslation();
   const [profiles, setProfiles] = useState([]);
+  const [version, setVersion] = useState(null);
   const [selected, setSelected] = useState(null);
   const [manage, setManage] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -22,7 +23,11 @@ export default function ProfileGate() {
 
   async function load() {
     setError(null);
-    try { setProfiles((await listProfiles()).profiles); }
+    try {
+      const result = await listProfiles();
+      setProfiles(result.profiles);
+      setVersion(result.version ?? null);
+    }
     catch (problem) { setError(problem); }
     finally { setLoading(false); }
   }
@@ -65,6 +70,7 @@ export default function ProfileGate() {
         {!loading && profiles.length === 0 && <button type="button" className="btn btn-secondary" onClick={load}>{t("profiles.retry")}</button>}
         <button type="button" className="btn btn-ghost" onClick={() => signOut().catch(setError)}>{t("profiles.signOut")}</button>
       </div>
+      {version && <p className="app-version">Streambert v{version}</p>}
     </section>
     {selected && <ProfileDialog label={selected.name} onClose={closePin}>
       <PinPad title={t("profiles.enterPin", { name: selected.name })} onCancel={closePin}
