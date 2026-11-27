@@ -42,8 +42,9 @@ body.tv-remote .web-player :focus-visible { outline-width: 5px; }
 .web-player-timeline input { flex: 1; min-width: 0; }
 .web-player input[type="range"] { accent-color: var(--wp-accent-color); cursor: pointer; }
 
-.web-player-bar { display: flex; align-items: center; gap: .25rem; min-height: 64px; }
-.web-player-spacer { flex: 1; }
+.web-player-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; min-height: 64px; }
+.web-player-actions { display: flex; align-items: center; gap: .25rem; }
+.web-player-actions:last-child { margin-inline-start: auto; }
 .web-player-icon, .web-player-pill {
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
   height: 44px; border: 0; border-radius: var(--radius); cursor: pointer;
@@ -55,7 +56,9 @@ body.tv-remote .web-player :focus-visible { outline-width: 5px; }
 .web-player-icon--main svg { width: 26px; height: 26px; }
 .web-player-pill { padding: 0 .9rem; background: color-mix(in srgb, var(--text) 10%, transparent); }
 .web-player-icon:hover, .web-player-pill:hover,
-.web-player-icon[aria-expanded="true"] { background: color-mix(in srgb, var(--text) 14%, transparent); }
+.web-player-icon[aria-expanded="true"], .web-player-icon[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
 
 .web-player-volume { display: flex; align-items: center; }
 .web-player-volume input { width: 0; opacity: 0; transition: width .2s, opacity .2s; }
@@ -142,14 +145,23 @@ body.tv-remote .web-player :focus-visible { outline-width: 5px; }
   background: rgba(17, 17, 17, .94); border: 1px solid var(--border); border-radius: var(--radius);
   font-size: 14px;
 }
+.web-player-hint { max-width: calc(100% - 2.5rem); }
 .web-player-next .btn { padding: 8px 16px; }
+
+.web-player[data-floating="true"] .web-player-top { padding-top: .25rem; padding-bottom: 1rem; }
+.web-player[data-floating="true"] .web-player-controls { padding-top: 1rem; padding-bottom: .25rem; }
+.web-player[data-floating="true"] .web-player-bar { min-height: 40px; }
+.web-player[data-floating="true"] .web-player-icon,
+.web-player[data-floating="true"] .web-player-pill { height: 36px; }
 
 /* ── Phones ──────────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
-  .web-player-bar { min-height: 52px; gap: 0; }
+  .web-player-bar { min-height: 52px; }
   .web-player-icon { width: 40px; }
   .web-player-pill span { display: none; }
   .web-player-pill { width: 40px; padding: 0; background: transparent; }
+  .web-player-volume input { width: 3rem; margin-right: .5rem; visibility: hidden; }
+  .web-player-volume:hover input, .web-player-volume:focus-within input { width: 3rem; visibility: visible; }
   .web-player-timeline { font-size: 12px; gap: .5rem; }
   .web-player-panel {
     position: fixed; left: 0; right: 0; bottom: 0; width: auto; z-index: 3; background: var(--surface);

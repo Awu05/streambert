@@ -107,6 +107,7 @@
     "source": "Source",
     "trySource": "Try {{source}}",
     "streamError": "The stream could not play. Try another source.",
+    "pictureInPictureError": "Couldn't change picture-in-picture mode. Try again.",
     "dashUnsupported": "This stream can't play on this device. Try another source or open it in another app.",
     "dashNoDownload": "Downloading isn't available for this stream.",
     "sourceStatus": {

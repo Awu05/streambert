@@ -547,7 +547,7 @@ function buildPlayerHtml(videoUrl, startTime, subtitleUrl, nonce) {
   const src=${jsonForScript(proxied(videoUrl))};
   const startTime=${start};
   if(window.Hls&&Hls.isSupported()){
-    const hls=new Hls({autoStartLoad:false});
+    const hls=new Hls({autoStartLoad:false,enableInterstitialPlayback:false});
     hls.loadSource(src);hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED,()=>{
       // start on the best quality (like ani-cli); ABR may still adapt downwards

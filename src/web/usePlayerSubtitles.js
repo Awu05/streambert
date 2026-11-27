@@ -1,32 +1,68 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 // The cue's plain text, without WebVTT markup such as <i> or <b>.
 const cueText = (cue) => (cue.getCueAsHTML ? cue.getCueAsHTML().textContent : cue.text || "").trim();
+const isCaption = (track) => track.kind === "captions" || track.kind === "subtitles";
+const FILE_TRACKS = "track[data-player-subtitle]";
 
-/**
- * The chosen subtitle track and its current line. The browser loads and times
- * the track ("hidden" mode) and the player draws the line, so it can sit above
- * the controls. In iPhone full screen, iOS's own player shows the track instead.
- */
-export function useSubtitles(videoRef, subtitles) {
-  const [subtitle, setSubtitle] = useState(() => subtitles.findIndex((track) => track.default));
+export function useSubtitles(videoRef, subtitles, pickedSubtitle, nativePictureInPicture, dashRef, dashTracks) {
+  const [selection, setSelection] = useState(() => {
+    const src = subtitles.find((track) => track.default)?.src ?? null;
+    return { active: src, last: src };
+  });
+  const [embedded, setEmbedded] = useState([]);
   const [caption, setCaption] = useState("");
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
-  const seen = useRef(new Set(subtitles.map((track) => track.src)));
+  const selectTrack = useCallback((src) => {
+    setSelection((previous) => previous.active === src ? previous : { active: src, last: src ?? previous.last });
+  }, []);
 
-  // A newly added track marked `picked` (from a subtitle search) turns on.
+  const tracks = useMemo(() => [
+    ...subtitles.map((track, index) => ({
+      id: track.src,
+      key: `file-${index}`,
+      label: track.label || track.lang || `Track ${index + 1}`,
+      default: track.default,
+    })),
+    ...embedded.map((track, index) => ({
+      id: track,
+      key: `embedded-${index}`,
+      label: track.label || track.language || `Track ${subtitles.length + index + 1}`,
+    })),
+  ], [subtitles, embedded]);
+  const selected = tracks.find((track) => track.id === selection.active);
+
   useEffect(() => {
-    const index = subtitles.findIndex((track) => track.picked && !seen.current.has(track.src));
-    for (const track of subtitles) seen.current.add(track.src);
-    if (index >= 0) setSubtitle(index);
-  }, [subtitles]);
+    if (pickedSubtitle) selectTrack(pickedSubtitle.src);
+  }, [pickedSubtitle, selectTrack]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const textTracks = video.textTracks;
+    function update() {
+      const files = new Set(Array.from(video.querySelectorAll(FILE_TRACKS), (element) => element.track));
+      const next = Array.from(textTracks).filter((track) => isCaption(track) && !files.has(track));
+      setEmbedded((previous) => next.length === previous.length && next.every((track, index) => track === previous[index])
+        ? previous : next);
+    }
+
+    update();
+    textTracks.addEventListener("addtrack", update);
+    textTracks.addEventListener("removetrack", update);
+    return () => {
+      textTracks.removeEventListener("addtrack", update);
+      textTracks.removeEventListener("removetrack", update);
+    };
+  }, [videoRef]);
 
   // iOS full screen: keep whatever is chosen in its menu when it closes.
   useEffect(() => {
     const video = videoRef.current;
     const begin = () => setNativeFullscreen(true);
     const end = () => {
-      setSubtitle([...video.querySelectorAll("track")].findIndex((element) => element.track.mode === "showing"));
+      const track = Array.from(video.textTracks).find((entry) => isCaption(entry) && entry.mode === "showing");
+      const file = Array.from(video.querySelectorAll(FILE_TRACKS)).find((element) => element.track === track);
+      selectTrack(file?.getAttribute("src") ?? track ?? null);
       setNativeFullscreen(false);
     };
     video.addEventListener("webkitbeginfullscreen", begin);
@@ -35,19 +71,33 @@ export function useSubtitles(videoRef, subtitles) {
       video.removeEventListener("webkitbeginfullscreen", begin);
       video.removeEventListener("webkitendfullscreen", end);
     };
-  }, [videoRef]);
+  }, [videoRef, selectTrack]);
 
   useEffect(() => {
     const video = videoRef.current;
-    const elements = [...video.querySelectorAll("track")];
-    const chosen = elements[subtitle];
-    setCaption("");
+    const textTracks = Array.from(video.textTracks).filter(isCaption);
+    const file = typeof selection.active === "string"
+      ? Array.from(video.querySelectorAll(FILE_TRACKS)).find((element) => element.getAttribute("src") === selection.active)
+      : null;
+    const chosen = typeof selection.active === "string" ? file?.track : selection.active;
+    const dash = dashRef.current;
+    if (dash && dashTracks.length) {
+      const index = chosen ? dashTracks.indexOf(chosen) : -1;
+      if (dash.getCurrentTextTrackIndex() !== index) dash.setTextTrack(index);
+    }
+    const showing = nativeFullscreen || nativePictureInPicture;
+    const selectedMode = showing ? "showing" : "hidden";
+    const applyModes = () => textTracks.forEach((track) => {
+      const mode = track === chosen ? selectedMode : "disabled";
+      if (track.mode !== mode) track.mode = mode;
+    });
+    applyModes();
 
     if (nativeFullscreen) {
-      elements.forEach((element, index) => { element.track.mode = index === subtitle ? "showing" : "disabled"; });
-      // iOS puts lines under its seek bar; lift unpositioned lines to end at 80% height.
+      setCaption("");
+      // Leave space for the native seek bar.
       const lift = () => {
-        for (const cue of chosen?.track.cues || []) {
+        for (const cue of chosen?.cues || []) {
           if (cue.line !== "auto") continue;
           cue.snapToLines = false;
           cue.line = 80;
@@ -55,29 +105,38 @@ export function useSubtitles(videoRef, subtitles) {
         }
       };
       lift();
-      chosen?.addEventListener("load", lift);
-      return () => chosen?.removeEventListener("load", lift);
+      file?.addEventListener("load", lift);
+      chosen?.addEventListener("cuechange", lift);
+      return () => {
+        file?.removeEventListener("load", lift);
+        chosen?.removeEventListener("cuechange", lift);
+      };
     }
 
-    // Safari may switch tracks itself (by the phone's language), so modes are reapplied.
-    const applyModes = () => elements.forEach((element, index) => {
-      const mode = index === subtitle ? "hidden" : "disabled";
-      if (element.track.mode !== mode) element.track.mode = mode;
-    });
-    const update = () => setCaption([...(chosen?.track.activeCues || [])].map(cueText).filter(Boolean).join("\n"));
-    applyModes();
+    const update = () => setCaption(showing ? "" : Array.from(chosen?.activeCues || [], cueText).filter(Boolean).join("\n"));
     update();
     video.textTracks.addEventListener("change", applyModes);
     video.addEventListener("loadedmetadata", applyModes);
-    chosen?.track.addEventListener("cuechange", update);
+    chosen?.addEventListener("cuechange", update);
     return () => {
       video.textTracks.removeEventListener("change", applyModes);
       video.removeEventListener("loadedmetadata", applyModes);
-      chosen?.track.removeEventListener("cuechange", update);
+      chosen?.removeEventListener("cuechange", update);
     };
-  }, [videoRef, subtitle, subtitles, nativeFullscreen]);
+  }, [videoRef, selection.active, subtitles, embedded, nativeFullscreen, nativePictureInPicture, dashRef, dashTracks]);
 
-  return { subtitle, setSubtitle, caption };
+  function toggleSubtitles() {
+    if (selected) {
+      selectTrack(null);
+      return;
+    }
+    const track = tracks.find(({ id }) => id === selection.last)
+      ?? tracks.find((track) => track.default)
+      ?? tracks[0];
+    selectTrack(track?.id ?? null);
+  }
+
+  return { tracks, selected, selectTrack, toggleSubtitles, caption };
 }
 
 /** The picture's height inside the video element and the letterbox gap below it. */

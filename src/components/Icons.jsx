@@ -420,6 +420,12 @@ export const ExitFullscreenIcon = () => (
     <path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" />
   </svg>
 );
+export const PictureInPictureIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor" stroke="none" />
+  </svg>
+);
 export const NextEpisodeIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor">
     <polygon points="5 4 15 12 5 20 5 4" />
