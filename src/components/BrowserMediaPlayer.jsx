@@ -175,7 +175,9 @@ export default function BrowserMediaPlayer({
       },
       subtitleSearch,
       externalMenu,
-      onDownload && { id: "download", label: "Download", onSelect: onDownload },
+      stream.kind === "dash"
+        ? { id: "dash-download", label: t("player.dashNoDownload"), info: true }
+        : onDownload && { id: "download", label: t("movie.download"), onSelect: onDownload },
     ].filter(Boolean);
     return createPortal(<WebPlayer key={stream.streamId}
       src={stream.src} kind={stream.kind} startAt={progressStart.current} subtitles={subtitles}

@@ -106,6 +106,9 @@
     "noSource": "No source is available for this title.",
     "source": "Source",
     "trySource": "Try {{source}}",
+    "streamError": "The stream could not play. Try another source.",
+    "dashUnsupported": "This stream can't play on this device. Try another source or open it in another app.",
+    "dashNoDownload": "Downloading isn't available for this stream.",
     "sourceStatus": {
       "works": "Works",
       "untested": "Not tested",
@@ -203,7 +206,6 @@
       "reason": {
         "no stream found": "No stream found",
         "provider requires verification": "Provider requires verification",
-        "found DASH, not supported": "Found DASH, which playback does not support",
         "live stream, not supported": "Live stream, not supported",
         "protected stream, not supported": "Protected stream, not supported",
         "timed out": "Timed out",

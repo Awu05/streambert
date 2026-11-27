@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { dashLevels } from "../web/dashLevels";
 import { mapPlayerKey } from "../web/playerKeys";
 import { pickInDirection } from "../utils/gamepadSpatialNav";
 import { trackLanguage } from "../web/subtitleLabel";
@@ -42,7 +44,9 @@ function OptionsPanel({ panelRef, menus, open, onRow, onItem, onBack }) {
   if (!menu) {
     return (
       <div ref={panelRef} className="web-player-panel" role="menu" aria-label="Options">
-        {menus.map((entry) => (
+        {menus.map((entry) => entry.info ? (
+          <p key={entry.id} className="web-player-note">{entry.label}</p>
+        ) : (
           <button key={entry.id} className="web-player-row" data-menu={entry.id} role="menuitem" onClick={() => onRow(entry)}>
             <span>{entry.label}</span>
             {entry.value && <span className="web-player-row-value">{entry.value}</span>}
@@ -85,6 +89,7 @@ export default function WebPlayer({
   src, kind, startAt, subtitles = [], title, accent, onProgress, onEnded,
   onClose, onError, onNext, overlay, menus = [],
 }) {
+  const { t } = useTranslation();
   const container = useRef(null);
   const videoRef = useRef(null);
   const controlsRef = useRef(null);
@@ -92,8 +97,9 @@ export default function WebPlayer({
   const playButton = useRef(null);
   const optionsButton = useRef(null);
   const hls = useRef(null);
+  const dash = useRef(null);
   const callbacks = useRef({});
-  callbacks.current = { onProgress, onEnded, onError };
+  callbacks.current = { onProgress, onEnded, onError, t };
   const resume = useRef(startAt);
   const hideTimer = useRef(null);
   const hintTimer = useRef(null);
@@ -129,12 +135,10 @@ export default function WebPlayer({
     return () => document.removeEventListener("fullscreenchange", update);
   }, []);
 
-  // Load the media. MP4 plays natively; HLS uses hls.js wherever it runs
-  // (including iOS 17.1+), with the browser's own HLS player as the fallback.
   useEffect(() => {
     const video = videoRef.current;
     let cancelled = false;
-    let native = kind !== "hls";
+    let native = kind !== "hls" && kind !== "dash";
     const report = () => callbacks.current.onProgress?.({ currentTime: video.currentTime, duration: video.duration });
     const interval = setInterval(() => { if (!video.paused) report(); }, 5000);
     // Autoplay with sound can be refused (iOS needs a fresh tap): then start muted.
@@ -152,7 +156,32 @@ export default function WebPlayer({
       video.src = src;
       tryPlay();
     };
-    if (native) playNatively();
+    if (kind === "dash") {
+      const reportError = (detail) => callbacks.current.onError?.(callbacks.current.t("player.streamError"), detail);
+      if (!window.MediaSource && !window.ManagedMediaSource) {
+        callbacks.current.onError?.(callbacks.current.t("player.dashUnsupported"));
+      } else {
+        import("dashjs").then(({ MediaPlayer }) => {
+          if (cancelled) return;
+          const player = MediaPlayer().create();
+          dash.current = player;
+          player.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: true } } } });
+          player.on(MediaPlayer.events.STREAM_INITIALIZED, () => {
+            if (cancelled) return;
+            setLevels(dashLevels(player.getRepresentationsByType("video")));
+            setQuality(-1);
+            tryPlay();
+          });
+          player.on(MediaPlayer.events.ERROR, ({ error }) => {
+            if (!cancelled) reportError("dash.js: " + (error?.message || error?.code || error || "unknown error"));
+          });
+          video.disableRemotePlayback = true;
+          player.initialize(video, src, false, resume.current > 0 ? resume.current : undefined);
+        }).catch((error) => {
+          if (!cancelled) reportError("dash.js: " + error.message);
+        });
+      }
+    } else if (native) playNatively();
     else {
       import("hls.js").then(({ default: Hls }) => {
         if (cancelled) return;
@@ -206,6 +235,9 @@ export default function WebPlayer({
       report();
       hls.current?.destroy();
       hls.current = null;
+      dash.current?.reset();
+      dash.current = null;
+      if (kind === "dash") video.disableRemotePlayback = false;
       video.removeAttribute("src");
       video.load();
     };
@@ -245,7 +277,13 @@ export default function WebPlayer({
     setMuted(video.muted);
   }
   function setLevel(level) {
-    hls.current.currentLevel = level;
+    const player = dash.current;
+    if (player) {
+      player.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: level === -1 } } } });
+      if (level !== -1) player.setRepresentationForTypeByIndex("video", levels[level].index);
+    } else if (hls.current) {
+      hls.current.currentLevel = level;
+    }
     setQuality(level);
   }
   function fullscreen() {
@@ -294,7 +332,7 @@ export default function WebPlayer({
     const levelLabel = (level, index) => (level.height ? `${level.height}p` : `Level ${index + 1}`);
     playerMenus.push({
       id: "quality", label: "Quality",
-      value: quality === -1 ? "Auto" : levelLabel(levels[quality], quality),
+      value: quality === -1 || !levels[quality] ? "Auto" : levelLabel(levels[quality], quality),
       items: [
         { key: "auto", label: "Auto", selected: quality === -1, onSelect: () => setLevel(-1) },
         ...levels.map((level, index) => ({
