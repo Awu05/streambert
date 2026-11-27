@@ -113,7 +113,7 @@ function createSourceTester({ resolve, resolveHianime, hiAnimeUserAgent, fetch =
       if (source.resolver === "hianime") {
         const match = await resolveHianime({
           title: title.title, seasonNumber: 1, episodeNumber: 1, isMovie: false, translationType: title.lang,
-        });
+        }, () => signal?.throwIfAborted());
         if (!match?.ok) throw new Error(match?.error || "No stream found");
         media = {
           url: match.url, kind: match.isDirectMp4 ? "mp4" : "hls",
@@ -131,6 +131,7 @@ function createSourceTester({ resolve, resolveHianime, hiAnimeUserAgent, fetch =
       return captureFailure(error);
     }
     try {
+      signal?.throwIfAborted();
       return await replay(media, fetch, signal);
     } catch {
       signal?.throwIfAborted();

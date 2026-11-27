@@ -219,6 +219,8 @@ async function startHttpServer({
         }
         if (parts.household) {
           store.apply(HOUSEHOLD_ID, parts.household);
+          if (Object.hasOwn(parts.household.set ?? {}, "playerSources") ||
+            parts.household.remove?.includes("playerSources")) await store.flush();
           hub.broadcast("storage-changed", parts.household, { except });
         }
         return res.writeHead(204).end();

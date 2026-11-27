@@ -607,11 +607,11 @@ function setupSourceTesting() {
     const controller = new AbortController();
     tests.set(clientId, controller);
     const subtitleLang = validSubtitleLanguage(language) ? language : undefined;
+    const cancelled = new Promise((resolve) => {
+      controller.signal.addEventListener("abort", () => resolve({ error: "Source test cancelled" }), { once: true });
+    });
     try {
-      return await tester.test(result.source, { clientId, subtitleLang, signal: controller.signal });
-    } catch (error) {
-      if (!controller.signal.aborted) throw error;
-      return { error: "Source test cancelled" };
+      return await Promise.race([cancelled, tester.test(result.source, { clientId, subtitleLang, signal: controller.signal })]);
     } finally {
       tests.delete(clientId);
     }

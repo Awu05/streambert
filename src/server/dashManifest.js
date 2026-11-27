@@ -51,14 +51,19 @@ function parseManifest(text) {
   return stack.length || text.slice(cursor).trim() || root?.name !== "MPD" ? null : root;
 }
 
-function containsElement(node, name) {
-  return node.name === name || node.children.some((child) => containsElement(child, name));
+function someElement(node, predicate) {
+  return predicate(node) || node.children.some((entry) => someElement(entry, predicate));
 }
 
 function inspectRoot(root) {
   if (!root) return { ok: false, reason: "no stream found" };
-  if (root.attrs.type && root.attrs.type !== "static") return { ok: false, reason: "live stream, not supported" };
-  if (containsElement(root, "ContentProtection")) return { ok: false, reason: "protected stream, not supported" };
+  if (root.attrs.type !== undefined && root.attrs.type !== "static") return { ok: false, reason: "live stream, not supported" };
+  if (someElement(root, ({ name }) => name === "ContentProtection")) return { ok: false, reason: "protected stream, not supported" };
+  if (someElement(root, ({ name, attrs }) =>
+    ["Location", "PatchLocation", "ContentSteering"].includes(name) ||
+    (name === "UTCTiming" && attrs.schemeIdUri?.startsWith("urn:mpeg:dash:utc:http")) ||
+    Object.keys(attrs).some((key) => key === "xml:base" || key.endsWith(":href"))
+  )) return { ok: false, reason: "no stream found" };
   return { ok: true };
 }
 
@@ -89,6 +94,7 @@ const urlAttributes = {
   SegmentURL: new Set(["media", "index"]),
   Initialization: new Set(["sourceURL"]),
   RepresentationIndex: new Set(["sourceURL"]),
+  BitstreamSwitching: new Set(["sourceURL"]),
 };
 
 function rewriteManifest(text, manifestUrl, baseFor) {
@@ -174,7 +180,9 @@ function firstSegmentUrls(text, manifestUrl) {
       };
       const expand = (uri) => uri.replace(/\$\$|\$(RepresentationID|Bandwidth|Number|Time)(?:%0(\d+)d)?\$/g,
         (token, key, width) => token === "$$" ? "$" : String(values[key] ?? "").padStart(Math.min(Number(width) || 0, 100), "0"));
-      return { init: attrs.initialization ? resolve(expand(attrs.initialization)) : null, media: resolve(expand(attrs.media)) };
+      const init = templates.map((node) => child(node, "Initialization")).filter(Boolean).at(-1);
+      const initialization = attrs.initialization ?? init?.attrs.sourceURL;
+      return { init: initialization ? resolve(expand(initialization)) : null, media: resolve(expand(attrs.media)) };
     }
     if (addressing?.name === "SegmentList") {
       const segment = lists.map((node) => child(node, "SegmentURL")).filter(Boolean).at(-1);
