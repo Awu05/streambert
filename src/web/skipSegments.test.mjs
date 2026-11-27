@@ -35,7 +35,7 @@ test("out-of-range or invalid markers cannot cause a seek", async (context) => {
 
 test("AniSkip uses the resolved episode number and TheIntroDB fills missing segments", async (context) => {
   const request = context.mock.method(globalThis, "fetch", async (url) => {
-    if (url.includes("api.aniskip.com")) return Response.json({
+    if (new URL(url).origin === "https://api.aniskip.com") return Response.json({
       found: true, results: [{ skipType: "op", interval: { startTime: 12, endTime: 93 }, episodeLength: 1441 }],
     });
     return Response.json({ type: "tv", season: 2, episode: 13, group_duration_ms: 1440000,
@@ -78,7 +78,7 @@ test("a stalled AniSkip lookup times out and the fallback still runs", async (co
     return nativeSetTimeout(abort, 5);
   });
   const request = context.mock.method(globalThis, "fetch", async (url, { signal }) => {
-    if (url.includes("api.aniskip.com")) {
+    if (new URL(url).origin === "https://api.aniskip.com") {
       return new Promise((_, reject) => {
         signal.addEventListener("abort", () => reject(signal.reason), { once: true });
       });
