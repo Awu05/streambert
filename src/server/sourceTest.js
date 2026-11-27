@@ -2,9 +2,11 @@ const http = require("node:http");
 const https = require("node:https");
 const { authorizePublicUrl } = require("./netGuard");
 const { streamHeaders } = require("./streams");
+const { MAX_PLAYLIST_BYTES } = require("../ipc/streamProxy");
+const { inspectManifest, firstSegmentUrls } = require("./dashManifest");
 const { buildSourceUrl, sourceKinds, TEST_TITLES } = require("../shared/sources.js");
 
-async function fetchPublic(value, headers, { range, signal: parent } = {}) {
+async function fetchPublic(value, headers, { range, signal: parent, maxBytes = 2 * 1024 * 1024 } = {}) {
   const timeout = AbortSignal.timeout(15000);
   const signal = parent ? AbortSignal.any([timeout, parent]) : timeout;
   for (let hop = 0; hop <= 5; hop++) {
@@ -29,7 +31,7 @@ async function fetchPublic(value, headers, { range, signal: parent } = {}) {
     let bytes = 0;
     for await (const chunk of response) {
       bytes += chunk.length;
-      if (bytes > 2 * 1024 * 1024) throw new Error("Playlist is too large");
+      if (bytes > maxBytes) throw new Error("Manifest is too large");
       chunks.push(chunk);
     }
     const body = Buffer.concat(chunks).toString("utf8");
@@ -50,6 +52,21 @@ async function replay(media, fetch, signal) {
   if (media.kind === "mp4") {
     const { status } = await fetch(media.url, headers, { range, signal });
     return status === 200 || status === 206 ? works : refused(status);
+  }
+  if (media.kind === "dash") {
+    const response = await fetch(media.url, headers, { signal, maxBytes: MAX_PLAYLIST_BYTES });
+    if (!playable(response.status)) return refused(response.status);
+    const text = await response.text();
+    const inspection = inspectManifest(text);
+    if (!inspection.ok) return failed(inspection.reason);
+    const segments = firstSegmentUrls(text, response.url || media.url);
+    if (!segments) return noStream();
+    for (const url of [segments.init, segments.media]) {
+      if (!url) continue;
+      const { status } = await fetch(url, headers, { range, signal });
+      if (!playable(status)) return refused(status);
+    }
+    return works;
   }
   let playlist = media.url;
   for (let depth = 0; depth < 5; depth++) {
@@ -83,7 +100,6 @@ async function replay(media, fetch, signal) {
 
 function captureFailure(error) {
   if (/verification/i.test(error.message)) return failed("provider requires verification");
-  if (/DASH/i.test(error.message)) return failed("found DASH, not supported");
   if (/timed out/i.test(error.message)) return failed("timed out");
   return noStream();
 }
@@ -97,7 +113,7 @@ function createSourceTester({ resolve, resolveHianime, hiAnimeUserAgent, fetch =
       if (source.resolver === "hianime") {
         const match = await resolveHianime({
           title: title.title, seasonNumber: 1, episodeNumber: 1, isMovie: false, translationType: title.lang,
-        });
+        }, () => signal?.throwIfAborted());
         if (!match?.ok) throw new Error(match?.error || "No stream found");
         media = {
           url: match.url, kind: match.isDirectMp4 ? "mp4" : "hls",
@@ -115,6 +131,7 @@ function createSourceTester({ resolve, resolveHianime, hiAnimeUserAgent, fetch =
       return captureFailure(error);
     }
     try {
+      signal?.throwIfAborted();
       return await replay(media, fetch, signal);
     } catch {
       signal?.throwIfAborted();
@@ -134,4 +151,4 @@ function createSourceTester({ resolve, resolveHianime, hiAnimeUserAgent, fetch =
   };
 }
 
-module.exports = { createSourceTester };
+module.exports = { createSourceTester, fetchPublic };

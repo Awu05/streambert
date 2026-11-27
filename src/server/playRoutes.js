@@ -5,7 +5,10 @@ const { json, readJson } = require("./httpServer");
 const { authorizePublicUrl } = require("./netGuard");
 const { buildSourceUrl, validateSource, validSubtitleLanguage } = require("../shared/sources.js");
 const { subtitleToVtt } = require("./fileRoutes");
-const { signedStreamPath, streamLink } = require("./streams");
+const { signedStreamPath, streamLink, streamHeaders } = require("./streams");
+const { fetchPublic } = require("./sourceTest");
+const { inspectManifest } = require("./dashManifest");
+const { MAX_PLAYLIST_BYTES } = require("../ipc/streamProxy");
 
 async function fetchSubtitle(value, signal, hops = 0) {
   if (hops > 5) throw new Error("Too many subtitle redirects");
@@ -113,19 +116,33 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
           break;
         }
         const jobId = `${clientId || ""}:${randomUUID()}`;
+        const controller = new AbortController();
         const onClose = () => {
-          if (!res.writableEnded) resolver.cancel(jobId);
+          if (!res.writableEnded) {
+            controller.abort();
+            resolver.cancel(jobId);
+          }
         };
         res.once("close", onClose);
         try {
-          const media = await resolver.resolve({
+          let media = await resolver.resolve({
             url: pageUrl, cleanUa: source.cleanUserAgent, clickFirst: source.clickFirst,
           }, {
             clientId: jobId,
             onQueue: (position) => hub.sendTo(clientId, "play-queue", { position, requestId: body.requestId }),
           });
-          await authorizePublicUrl(media.url);
-          respond(res, origin, media);
+          if (media.kind === "dash") {
+            const response = await fetchPublic(media.url, streamHeaders(media.headers), {
+              signal: controller.signal, maxBytes: MAX_PLAYLIST_BYTES,
+            });
+            if (response.status < 200 || response.status >= 300) throw new Error(`stream refused replay (${response.status})`);
+            const result = inspectManifest(await response.text());
+            if (!result.ok) throw new Error(result.reason);
+            media = { ...media, url: response.url };
+          } else {
+            await authorizePublicUrl(media.url);
+          }
+          if (!res.destroyed) respond(res, origin, media);
         } catch (error) {
           if (!res.destroyed) json(res, 422, { error: error.message });
         } finally {

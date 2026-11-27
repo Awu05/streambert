@@ -1,4 +1,4 @@
-import { DEFAULT_SOURCES, sourceIdFromLabel, sourceKinds, validateSource } from "../shared/sources";
+import { DEFAULT_SOURCES, loadingFieldsEqual, sourceIdFromLabel, sourceKinds, validateSource } from "../shared/sources";
 
 export function moveSource(list, index, delta) {
   const to = Math.max(0, Math.min(list.length - 1, index + delta));
@@ -27,13 +27,44 @@ export function saveSources(draft) {
 }
 
 export function applyTestResult(source, result, testedAt) {
-  const web = { ...source.web, testedAt };
-  const lastReasons = {};
+  const web = { ...source.web, testedAt, reasons: { ...source.web.reasons } };
   for (const kind of sourceKinds(source)) {
     const entry = result[kind];
     if (!entry) continue;
     web[kind] = entry.status;
-    if (entry.reason) lastReasons[kind] = entry.reason;
+    if (entry.status === "failed" && typeof entry.reason === "string" && entry.reason.length <= 100) {
+      web.reasons[kind] = entry.reason;
+    } else {
+      delete web.reasons[kind];
+    }
   }
-  return { ...source, web, lastReasons };
+  return { ...source, web };
+}
+
+export function storeTestResult(stored, tested) {
+  const index = stored.findIndex(({ id }) => id === tested.id);
+  if (index < 0 || !loadingFieldsEqual(stored[index], tested)) return null;
+  return stored.map((source, i) => i === index ? { ...source, web: tested.web } : source);
+}
+
+export function mergeSavedResults(list, stored) {
+  const byId = new Map(stored.map((source) => [source.id, source]));
+  return list.map((source) => {
+    const current = byId.get(source.id);
+    return current && loadingFieldsEqual(source, current) &&
+      (current.web.testedAt ?? -Infinity) > (source.web.testedAt ?? -Infinity)
+      ? { ...source, web: current.web }
+      : source;
+  });
+}
+
+export function rowHasLoadingEdits(row, stored) {
+  const current = stored.find(({ id }) => id === row.id);
+  return !current || !loadingFieldsEqual(row, current);
+}
+
+export function testAllSummary(results) {
+  const works = results.filter(({ result }) =>
+    !result.error && Object.values(result).some((kind) => kind?.status === "works")).length;
+  return { tested: results.length, works, failed: results.length - works };
 }
