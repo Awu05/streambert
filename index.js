@@ -594,14 +594,34 @@ function setupSourceTesting() {
   request.onErrorOccurred(filter, capture.onError);
   const resolver = createResolver({ maxPages: 1, openPage: capture.openPage });
   const tester = createSourceTester({
-    resolve: (input) => resolver.resolve(input, { fresh: true }),
+    resolve: (input, { clientId }) => resolver.resolve(input, { clientId, fresh: true }),
     resolveHianime: hianimeIpc.resolveHiAnime, hiAnimeUserAgent: hianimeIpc.USER_AGENT,
   });
-  ipcMain.handle("test-source", (event, entry, language) => {
+  const tests = new Map();
+  ipcMain.handle("test-source", async (event, entry, language, requestId) => {
     if (event.sender !== getMainWindow()?.webContents) return { error: "Invalid source" };
     const result = validateSource(entry);
+    if (!result.ok) return { error: "Invalid source", errors: result.errors };
+    const clientId = typeof requestId === "string" && /^[a-f0-9-]{36}$/.test(requestId) ? requestId : undefined;
+    if (tests.has(clientId)) return { error: "Source test already running" };
+    const controller = new AbortController();
+    tests.set(clientId, controller);
     const subtitleLang = validSubtitleLanguage(language) ? language : undefined;
-    return result.ok ? tester.test(result.source, { subtitleLang }) : { error: "Invalid source", errors: result.errors };
+    try {
+      return await tester.test(result.source, { clientId, subtitleLang, signal: controller.signal });
+    } catch (error) {
+      if (!controller.signal.aborted) throw error;
+      return { error: "Source test cancelled" };
+    } finally {
+      tests.delete(clientId);
+    }
+  });
+  ipcMain.on("cancel-source-test", (event, requestId) => {
+    if (event.sender !== getMainWindow()?.webContents || typeof requestId !== "string") return;
+    const controller = tests.get(requestId);
+    if (!controller) return;
+    controller.abort();
+    resolver.cancel(requestId);
   });
 }
 

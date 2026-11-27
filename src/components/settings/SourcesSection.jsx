@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { getSources } from "../../utils/api";
 import { storage, STORAGE_KEYS } from "../../utils/storage";
-import { applyTestResult, mergeSavedResults, moveSource, rowHasLoadingEdits, saveSources, storeTestResult } from "../../utils/sourceList";
+import {
+  applyTestResult, mergeSavedResults, moveSource, rowHasLoadingEdits, saveSources, storeTestResult, testAllSummary,
+} from "../../utils/sourceList";
 import { newDefaultSources, resetStatusOnEdit, sourceKinds, validateSource } from "../../shared/sources";
 import SourceEditor from "./SourceEditor";
 
@@ -44,7 +46,7 @@ function SourceStatus({ entry }) {
   </span>;
 }
 
-export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision, readOnly }) {
+export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision, readOnly, visible }) {
   const { t } = useTranslation();
   const label = (key, values) => t("settings.sources." + key, values);
   const rowNumber = useRef(0);
@@ -57,10 +59,23 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
   const [message, setMessage] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [running, setRunning] = useState(null);
+  const [batch, setBatch] = useState(null);
+  const [summary, setSummary] = useState(null);
   const [committing, setCommitting] = useState(false);
   const activeTest = useRef(null);
+  const mounted = useRef(false);
 
-  useEffect(() => () => activeTest.current?.abort(), []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      activeTest.current?.abort();
+      activeTest.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    if (!visible || readOnly) activeTest.current?.abort();
+  }, [visible, readOnly]);
   useEffect(() => {
     if (!revision) return;
     activeTest.current?.abort();
@@ -71,6 +86,8 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
     setEditing(null);
     setErrors([]);
     setRunning(null);
+    setBatch(null);
+    setSummary(null);
     setTestedError(null);
     setMessage(null);
   }, [revision]);
@@ -93,7 +110,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
   }, [draft]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
-  const locked = readOnly || running !== null || committing;
+  const locked = readOnly || running !== null || batch !== null || committing;
   const additions = newDefaultSources(getSources()).filter(({ id }) => !draft.some((entry) => entry.id === id));
 
   function add(source) {
@@ -118,25 +135,26 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
     setEditing(row.rowKey);
   }
 
-  async function test(entry) {
-    if (activeTest.current) return;
+  async function runTest(entry, controller) {
+    const canUpdate = () => mounted.current && activeTest.current === controller;
     const validation = validateSource({ ...serialize(entry), id: entry.id || "draft-source" });
     if (!validation.ok) {
       showErrors(entry, validation.errors);
-      return;
+      return { error: true };
     }
-    const controller = new AbortController();
-    activeTest.current = controller;
-    setRunning(entry.rowKey);
-    setTestedError(null);
-    setMessage(null);
+    const requestId = window.electron.cancelSourceTest ? crypto.randomUUID() : undefined;
+    const { signal } = controller;
+    const cancel = () => window.electron.cancelSourceTest(requestId);
+    if (requestId) signal.addEventListener("abort", cancel, { once: true });
     try {
-      const result = await window.electron.testSource(validation.source, controller.signal, storage.get(STORAGE_KEYS.SUBTITLE_LANG));
-      if (controller.signal.aborted) return;
+      const result = await window.electron.testSource(
+        validation.source, requestId ? undefined : signal, storage.get(STORAGE_KEYS.SUBTITLE_LANG), requestId,
+      );
+      if (!canUpdate() || signal.aborted) return null;
       if (result.error) {
         if (result.errors?.length) showErrors(entry, result.errors);
         else setTestedError(entry.rowKey);
-        return;
+        return result;
       }
       const tested = applyTestResult(validation.source, result, Date.now());
       const list = storeTestResult(getSources(), { ...tested, id: entry.id });
@@ -144,18 +162,53 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
       setDraft(refresh);
       if (list) {
         storage.set(STORAGE_KEYS.PLAYER_SOURCES, list);
-        if (await storage.flush() === false) {
-          if (!controller.signal.aborted) setMessage("saveError");
-        } else if (!controller.signal.aborted) {
-          setBaseline(refresh);
+        try {
+          if (await storage.flush() === false) throw new Error("Source storage did not sync");
+          if (canUpdate()) {
+            const stored = getSources();
+            const current = stored.find(({ id }) => id === entry.id);
+            if (current) {
+              setBaseline((rows) => rows.map((row) => row.rowKey === entry.rowKey && !rowHasLoadingEdits(serialize(row), stored)
+                ? { ...row, web: current.web }
+                : row));
+            }
+          }
+        } catch {
+          if (canUpdate()) setMessage("saveError");
         }
       }
+      return result;
     } catch {
-      if (!controller.signal.aborted) setTestedError(entry.rowKey);
+      if (!canUpdate() || signal.aborted) return null;
+      setTestedError(entry.rowKey);
+      return { error: true };
     } finally {
-      if (activeTest.current === controller) {
+      signal.removeEventListener("abort", cancel);
+    }
+  }
+
+  async function testRows(rows, all = false) {
+    if (locked || activeTest.current || !rows.length) return;
+    const controller = new AbortController();
+    activeTest.current = controller;
+    setTestedError(null);
+    setMessage(null);
+    setSummary(null);
+    const results = [];
+    try {
+      for (const [index, row] of rows.entries()) {
+        if (controller.signal.aborted) break;
+        setRunning(row.rowKey);
+        if (all) setBatch({ current: index + 1, total: rows.length, name: row.label });
+        const result = await runTest(row, controller);
+        if (result) results.push({ id: row.id, result });
+      }
+    } finally {
+      if (mounted.current && activeTest.current === controller) {
         activeTest.current = null;
         setRunning(null);
+        setBatch(null);
+        if (all) setSummary(testAllSummary(results));
       }
     }
   }
@@ -196,13 +249,22 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
       {readOnly && <p>{t("profiles.managed")}</p>}
       <div className="source-heading">
         <h2 className="settings-section-title" id="source-settings-title">{t("settings.tabs.sources")}</h2>
-        <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => {
-          add({
-            id: "", label: label("newName"), enabled: true, idType: "tmdb", progress: "page",
-            params: {}, hideCss: [], web: { movie: "untested", tv: "untested", anime: "untested", testedAt: null, reasons: {} },
-          });
-        }}>{label("add")}</button>
+        <div className="source-actions source-test-actions">
+          <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => {
+            add({
+              id: "", label: label("newName"), enabled: true, idType: "tmdb", progress: "page",
+              params: {}, hideCss: [], web: { movie: "untested", tv: "untested", anime: "untested", testedAt: null, reasons: {} },
+            });
+          }}>{label("add")}</button>
+          {!readOnly && <button type="button" className="btn btn-secondary" disabled={batch === null && locked}
+            onClick={() => batch ? activeTest.current?.abort() : void testRows(draft, true)}>
+            {label(batch ? "stop" : "testAll")}
+          </button>}
+        </div>
       </div>
+      {(batch || summary) && <p className="source-status" role="status">
+        {batch ? label("testingAll", batch) : label("testAllDone", summary)}
+      </p>}
       {additions.map((source) => <div className="source-heading source-addition" key={source.id}>
         <span>{label("newBuiltIn", { source: source.label })}</span>
         <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => add(source)}>{label("addBuiltIn")}</button>
@@ -223,16 +285,17 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
             <SourceStatus entry={entry} />
           </div>
           <div className="source-actions">
-            <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => test(entry)}>
+            <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => void testRows([entry])}>
               {label(running === entry.rowKey ? "testing" : "test")}
             </button>
             <button type="button" className="btn btn-ghost" aria-expanded={editing === entry.rowKey}
+              disabled={batch !== null}
               onClick={() => setEditing(editing === entry.rowKey ? null : entry.rowKey)}>
               {label(editing === entry.rowKey ? "close" : "edit")}
             </button>
           </div>
         </div>
-        {running === entry.rowKey && <p className="source-status" role="status">{label("testingStatus")}</p>}
+        {!batch && running === entry.rowKey && <p className="source-status" role="status">{label("testingStatus")}</p>}
         {testedError === entry.rowKey && <p className="source-error" role="alert">{label("testError")}</p>}
         {editing === entry.rowKey && <fieldset className="source-editor-fields" disabled={locked}>
           <SourceEditor Select={Select} Toggle={Toggle} value={entry} update={(changes) => update(entry, changes)}

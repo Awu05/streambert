@@ -102,6 +102,7 @@ export function installWebBridge(boot, {
     setTvRemoteMode() {},
     setSourceRules() {},
     testSource: (entry, signal, subtitleLang) => apiRequest("/api/sources/test", { entry, subtitleLang }, { fetch, window, signal }),
+    cancelSourceTest: undefined,
     respondClose() {},
     playerStopped() {},
     async openExternal(url) {

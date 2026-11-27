@@ -79,7 +79,8 @@ contextBridge.exposeInMainWorld("electron", {
 
   // anime episode resolver (main-process HTTP, bypasses CORS/bot-check)
   setSourceRules: (id, entry) => ipcRenderer.send("set-source-rules", id, entry),
-  testSource: (entry, _signal, subtitleLang) => ipcRenderer.invoke("test-source", entry, subtitleLang),
+  testSource: (entry, _signal, subtitleLang, requestId) => ipcRenderer.invoke("test-source", entry, subtitleLang, requestId),
+  cancelSourceTest: (requestId) => ipcRenderer.send("cancel-source-test", requestId),
   resolveHiAnime: (args) => ipcRenderer.invoke("resolve-hianime", args),
   setPlayerVideo: (args) => ipcRenderer.invoke("set-player-video", args),
   // progress of the HiAnime lookup (stage: "search" | "episodes" | "stream");

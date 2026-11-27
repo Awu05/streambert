@@ -4102,6 +4102,7 @@ html[data-win-titlebar][data-maximized] .main {
 
 .source-heading, .source-actions, .source-move { display: flex; align-items: center; gap: 8px; }
 .source-heading { justify-content: space-between; flex-wrap: wrap; }
+.source-test-actions { flex-wrap: wrap; }
 .source-heading .settings-section-title { margin: 0; }
 .source-addition { padding: 12px 0; color: var(--text2); }
 .source-row { padding: 12px 0; border-bottom: 1px solid var(--border); }

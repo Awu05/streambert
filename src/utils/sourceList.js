@@ -62,3 +62,9 @@ export function rowHasLoadingEdits(row, stored) {
   const current = stored.find(({ id }) => id === row.id);
   return !current || !loadingFieldsEqual(row, current);
 }
+
+export function testAllSummary(results) {
+  const works = results.filter(({ result }) =>
+    !result.error && Object.values(result).some((kind) => kind?.status === "works")).length;
+  return { tested: results.length, works, failed: results.length - works };
+}
