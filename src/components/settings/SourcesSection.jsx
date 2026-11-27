@@ -254,16 +254,16 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
       <div className="source-heading">
         <h2 className="settings-section-title" id="source-settings-title">{t("settings.tabs.sources")}</h2>
         <div className="source-actions source-test-actions">
+          {!readOnly && <button type="button" className="btn btn-secondary" disabled={batch === null && locked}
+            onClick={() => batch ? activeTest.current?.abort() : void testRows(draft, true)}>
+            {label(batch ? "stop" : "testAll")}
+          </button>}
           <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => {
             add({
               id: "", label: label("newName"), enabled: true, idType: "tmdb", progress: "page",
               params: {}, hideCss: [], web: { movie: "untested", tv: "untested", anime: "untested", testedAt: null, reasons: {} },
             });
           }}>{label("add")}</button>
-          {!readOnly && <button type="button" className="btn btn-secondary" disabled={batch === null && locked}
-            onClick={() => batch ? activeTest.current?.abort() : void testRows(draft, true)}>
-            {label(batch ? "stop" : "testAll")}
-          </button>}
         </div>
       </div>
       {(batch || summary) && <p className="source-status" role="status">
@@ -297,6 +297,9 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
               onClick={() => setEditing(editing === entry.rowKey ? null : entry.rowKey)}>
               {label(editing === entry.rowKey ? "close" : "edit")}
             </button>
+            {!readOnly && <button type="button" className="btn btn-ghost source-delete" disabled={locked}
+              aria-label={label("deleteSource", { source: entry.label || label("newName") })}
+              onClick={() => setConfirm(entry.rowKey)}>{label("deleteRow")}</button>}
           </div>
         </div>
         {!batch && running === entry.rowKey && <p className="source-status" role="status">{label("testingStatus")}</p>}
@@ -304,7 +307,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
         {editing === entry.rowKey && <fieldset className="source-editor-fields" disabled={locked}>
           <SourceEditor Select={Select} Toggle={Toggle} value={entry} update={(changes) => update(entry, changes)}
             errors={errors.filter(({ rowKey }) => rowKey === entry.rowKey)}
-            focusName={!entry.id} remove={() => setConfirm(entry.rowKey)} />
+            focusName={!entry.id} />
         </fieldset>}
       </div>)}
 

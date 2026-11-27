@@ -138,6 +138,8 @@
       "testing": "Testing…",
       "testingStatus": "Checking stream capture and playback…",
       "testAll": "Test all",
+      "deleteSource": "Delete {{source}}",
+      "deleteRow": "Delete",
       "stop": "Stop",
       "testingAll": "Testing {{current}} of {{total}}: {{name}}",
       "testAllDone": "{{tested}} tested: {{works}} work, {{failed}} didn't",
