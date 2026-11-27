@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { getSources } from "../../utils/api";
 import { storage, STORAGE_KEYS } from "../../utils/storage";
-import { applyTestResult, moveSource, saveSources } from "../../utils/sourceList";
+import { applyTestResult, mergeSavedResults, moveSource, rowHasLoadingEdits, saveSources, storeTestResult } from "../../utils/sourceList";
 import { newDefaultSources, resetStatusOnEdit, sourceKinds, validateSource } from "../../shared/sources";
 import SourceEditor from "./SourceEditor";
 
@@ -75,6 +75,23 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
     setMessage(null);
   }, [revision]);
 
+  useEffect(() => {
+    function syncResults(event) {
+      if (!event.detail?.keys?.includes(STORAGE_KEYS.PLAYER_SOURCES)) return;
+      const stored = getSources();
+      const results = new Map(draft.flatMap((row) => rowHasLoadingEdits(serialize(row), stored)
+        ? []
+        : [[row.rowKey, stored.find(({ id }) => id === row.id).web]]));
+      const refresh = (rows) => rows.map((row) => results.has(row.rowKey) && !rowHasLoadingEdits(serialize(row), stored)
+        ? { ...row, web: results.get(row.rowKey) }
+        : row);
+      setDraft(refresh);
+      setBaseline(refresh);
+    }
+    window.addEventListener("streambert:storage-changed", syncResults);
+    return () => window.removeEventListener("streambert:storage-changed", syncResults);
+  }, [draft]);
+
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
   const locked = readOnly || running !== null || committing;
   const additions = newDefaultSources(getSources()).filter(({ id }) => !draft.some((entry) => entry.id === id));
@@ -121,7 +138,18 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
         else setTestedError(entry.rowKey);
         return;
       }
-      setDraft((rows) => rows.map((row) => row.rowKey === entry.rowKey ? applyTestResult(row, result, Date.now()) : row));
+      const tested = applyTestResult(validation.source, result, Date.now());
+      const list = storeTestResult(getSources(), { ...tested, id: entry.id });
+      const refresh = (rows) => rows.map((row) => row.rowKey === entry.rowKey ? { ...row, web: tested.web } : row);
+      setDraft(refresh);
+      if (list) {
+        storage.set(STORAGE_KEYS.PLAYER_SOURCES, list);
+        if (await storage.flush() === false) {
+          if (!controller.signal.aborted) setMessage("saveError");
+        } else if (!controller.signal.aborted) {
+          setBaseline(refresh);
+        }
+      }
     } catch {
       if (!controller.signal.aborted) setTestedError(entry.rowKey);
     } finally {
@@ -160,7 +188,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
       setEditing(draft[result.errors[0].index].rowKey);
       return;
     }
-    void persist(result.list);
+    void persist(mergeSavedResults(result.list, getSources()));
   }
 
   return (
