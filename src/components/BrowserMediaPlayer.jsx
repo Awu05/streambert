@@ -38,7 +38,6 @@ function useSubtitleSearchMenu({ itemId, mediaType, season, episode, onPick }) {
         src: `/api/subtitle?u=${encodeURIComponent(response.url)}`,
         lang: result.language || "und",
         label: [result.language?.toUpperCase(), result.release || result.file_name].filter(Boolean).join(" · ") || "Subtitle",
-        picked: true,
       });
       setStatus("Subtitle added and turned on");
     } catch (error) { setStatus(error.message); }
@@ -181,6 +180,7 @@ export default function BrowserMediaPlayer({
     ].filter(Boolean);
     return createPortal(<WebPlayer key={stream.streamId}
       src={stream.src} kind={stream.kind} startAt={progressStart.current} subtitles={subtitles}
+      pickedSubtitle={customTracks[customTracks.length - 1]}
       title={title} accent={accent} onClose={onClose} onNext={onNext} onEnded={onEnded} overlay={overlay}
       onError={(message, detail) => setStatus({ mode: "error", message, detail })}
       onProgress={(value) => recordProgress(value, { progressKey, saveProgress, markWatched, watchedThreshold, alreadyMarked: marked })}

@@ -1,20 +1,23 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { dashLevels } from "../web/dashLevels";
 import { mapPlayerKey } from "../web/playerKeys";
 import { pickInDirection } from "../utils/gamepadSpatialNav";
 import { trackLanguage } from "../web/subtitleLabel";
+import { usePictureInPicture } from "../web/usePictureInPicture";
 import { usePictureBox, useSubtitles } from "../web/usePlayerSubtitles";
 import {
   PlayIcon, PauseIcon, SeekBackIcon, SeekForwardIcon, VolumeIcon, MutedIcon,
   FullscreenIcon, ExitFullscreenIcon, NextEpisodeIcon, SettingsIcon, CloseIcon,
-  CheckIcon, ChevronLeftIcon, ChevronRightIcon,
+  CheckIcon, ChevronLeftIcon, ChevronRightIcon, PictureInPictureIcon, SubtitlesIcon,
 } from "./Icons";
 import "../styles/webPlayer.css";
 
 const FOCUSABLE = 'button:not(:disabled), a[href], input:not([tabindex="-1"])';
 const DIRECTIONS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
 const BACK_KEYS = ["Escape", "Backspace", "GoBack", "BrowserBack"];
+const EMPTY_TRACKS = [];
 
 // Left/Right stay within the focused control's row; Up/Down move between rows.
 function nextControl(from, candidates, direction) {
@@ -83,11 +86,23 @@ function OptionsPanel({ panelRef, menus, open, onRow, onItem, onBack }) {
  * `menus` adds rows to the Options panel: { id, label, value?, items?, onSelect?,
  * onOpen?, status?, note?, extra? }; an item is { key, label, detail?, selected?,
  * disabled?, href?, keepOpen?, onSelect? }.
- * Subtitles: { src, lang, label, default?, picked? } (`picked` turns on when added).
+ * Subtitles: { src, lang, label, default? }. A new pickedSubtitle selects that track.
  */
-export default function WebPlayer({
-  src, kind, startAt, subtitles = [], title, accent, onProgress, onEnded,
+export default function WebPlayer(props) {
+  const home = useRef(null);
+  const [host] = useState(() => document.createElement("div"));
+  useLayoutEffect(() => {
+    home.current.append(host);
+    return () => host.remove();
+  }, [host]);
+
+  return <><div ref={home} />{createPortal(<Player {...props} host={host} home={home} />, host)}</>;
+}
+
+function Player({
+  src, kind, startAt, subtitles = EMPTY_TRACKS, pickedSubtitle, title, accent, onProgress, onEnded,
   onClose, onError, onNext, overlay, menus = [],
+  host, home,
 }) {
   const { t } = useTranslation();
   const container = useRef(null);
@@ -117,15 +132,25 @@ export default function WebPlayer({
   const [isFullscreen, setFullscreen] = useState(false);
   const [levels, setLevels] = useState([]);
   const [quality, setQuality] = useState(-1);
-  const [hint, setHint] = useState(false);
+  const [dashTracks, setDashTracks] = useState(EMPTY_TRACKS);
+  const [hint, setHint] = useState("");
   const [panel, setPanel] = useState(null);
-  const { subtitle, setSubtitle, caption } = useSubtitles(videoRef, subtitles);
+  const pictureInPicture = usePictureInPicture(videoRef, host, home);
+  const { tracks, selected, selectTrack, toggleSubtitles, caption } = useSubtitles(
+    videoRef, subtitles, pickedSubtitle, pictureInPicture.native, dash, dashTracks,
+  );
   const picture = usePictureBox(videoRef);
 
   function showControls() {
     setControls(true);
     clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setControls(false), 3000);
+  }
+
+  function showHint(message, duration) {
+    setHint(message);
+    clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setHint(""), duration);
   }
 
   useEffect(() => { container.current?.focus(); }, []);
@@ -166,6 +191,13 @@ export default function WebPlayer({
           const player = MediaPlayer().create();
           dash.current = player;
           player.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: true } } } });
+          player.on(MediaPlayer.events.TEXT_TRACKS_ADDED, ({ tracks }) => {
+            if (cancelled) return;
+            const native = Array.from(video.textTracks);
+            setDashTracks(tracks.map(({ id, lang, kind }) => native.find((track) =>
+              track.label === String(id ?? lang ?? "") && track.language === (lang ?? "") && track.kind === kind,
+            )));
+          });
           player.on(MediaPlayer.events.STREAM_INITIALIZED, () => {
             if (cancelled) return;
             setLevels(dashLevels(player.getRepresentationsByType("video")));
@@ -189,7 +221,7 @@ export default function WebPlayer({
           if (video.canPlayType("application/vnd.apple.mpegurl")) return playNatively();
           throw new Error("HLS is unavailable in this browser");
         }
-        const instance = new Hls({ startPosition: resume.current || -1 });
+        const instance = new Hls({ startPosition: resume.current || -1, enableInterstitialPlayback: false });
         hls.current = instance;
         instance.on(Hls.Events.MANIFEST_PARSED, () => {
           setLevels(instance.levels);
@@ -287,9 +319,15 @@ export default function WebPlayer({
     setQuality(level);
   }
   function fullscreen() {
+    if (pictureInPicture.floating) return;
     if (document.fullscreenElement) void document.exitFullscreen?.();
     else if (container.current.requestFullscreen) void container.current.requestFullscreen().catch(() => {});
     else videoRef.current.webkitEnterFullscreen?.();
+  }
+  async function togglePictureInPicture() {
+    if (!await pictureInPicture.toggle() && videoRef.current) {
+      showHint(t("player.pictureInPictureError"), 4000);
+    }
   }
   function closePanel() {
     setPanel(null);
@@ -315,15 +353,15 @@ export default function WebPlayer({
   }
 
   const playerMenus = [];
-  if (subtitles.length) {
+  if (tracks.length) {
     playerMenus.push({
       id: "subtitles", label: "Subtitles",
-      value: subtitles[subtitle]?.label || subtitles[subtitle]?.lang || "Off",
+      value: selected?.label || "Off",
       items: [
-        { key: "off", label: "Off", selected: subtitle === -1, onSelect: () => setSubtitle(-1) },
-        ...subtitles.map((track, index) => ({
-          key: `${track.src}-${index}`, label: track.label || track.lang || `Track ${index + 1}`,
-          selected: subtitle === index, onSelect: () => setSubtitle(index),
+        { key: "off", label: "Off", selected: !selected, onSelect: () => selectTrack(null) },
+        ...tracks.map((track) => ({
+          key: track.key, label: track.label,
+          selected: selected === track, onSelect: () => selectTrack(track.id),
         })),
       ],
     });
@@ -364,11 +402,7 @@ export default function WebPlayer({
       if (mapped.action === "seekForward") seek(10);
       if (mapped.action === "showControls") playButton.current?.focus();
       if (mapped.action === "exit") onClose();
-      if (mapped.action === "hintExit") {
-        setHint(true);
-        clearTimeout(hintTimer.current);
-        hintTimer.current = setTimeout(() => setHint(false), 1900);
-      }
+      if (mapped.action === "hintExit") showHint("Press ↓ again to exit", 1900);
       return;
     }
     // Focus on a control or in the Options panel: arrows move, Back steps out.
@@ -412,9 +446,11 @@ export default function WebPlayer({
   const playLabel = paused ? "Play" : "Pause";
   const muteLabel = muted ? "Unmute" : "Mute";
   const fullscreenLabel = isFullscreen ? "Exit full screen" : "Full screen";
+  const pictureInPictureLabel = pictureInPicture.active ? "Exit picture-in-picture" : "Picture-in-picture";
 
   return (
     <section ref={container} className="web-player" tabIndex={0} data-web-player
+      data-floating={pictureInPicture.floating}
       data-idle={!visible} aria-label={title} style={accent ? { "--wp-accent": accent } : undefined}
       onKeyDown={handleKey} onPointerMove={showControls}
       onPointerDown={(event) => { pointerType.current = event.pointerType; }}>
@@ -430,14 +466,15 @@ export default function WebPlayer({
           `${hls.current ? "hls.js" : "built-in player"}: error ${error.code}${error.message ? ` (${error.message})` : ""}`);
         }}>
         {subtitles.map((track, index) => (
-          <track key={`${track.src}-${index}`} kind="subtitles" src={track.src} default={index === subtitle}
+          <track key={`${track.src}-${index}`} data-player-subtitle kind="subtitles" src={track.src}
+            default={track.src === selected?.id}
             srcLang={trackLanguage(track.lang)} label={track.label || track.lang || "Subtitles"} />
         ))}
       </video>
-      {caption && <div className="web-player-caption" aria-live="polite"
+      {selected && !pictureInPicture.native && caption && <div className="web-player-caption" aria-live="polite"
         style={{ bottom: captionBottom, fontSize: captionSize }}><span>{caption}</span></div>}
       {overlay}
-      {hint && <div className="web-player-hint" role="status">Press ↓ again to exit</div>}
+      {hint && <div className="web-player-hint" role="status">{hint}</div>}
       {autoMuted && muted && <button className="web-player-unmute" onClick={toggleMute}>
         <MutedIcon /><span>Tap to unmute</span>
       </button>}
@@ -459,30 +496,41 @@ export default function WebPlayer({
           <span>{formatTime(duration)}</span>
         </div>
         <div className="web-player-bar">
-          <button ref={playButton} className="web-player-icon web-player-icon--main" onClick={togglePlay}
-            aria-label={playLabel} title={playLabel}>
-            {paused ? <PlayIcon /> : <PauseIcon />}
-          </button>
-          <button className="web-player-icon" onClick={() => seek(-10)} aria-label="Back 10 seconds" title="Back 10 seconds"><SeekBackIcon /></button>
-          <button className="web-player-icon" onClick={() => seek(10)} aria-label="Forward 10 seconds" title="Forward 10 seconds"><SeekForwardIcon /></button>
-          <div className="web-player-volume">
-            <button className="web-player-icon" onClick={toggleMute} aria-label={muteLabel} title={muteLabel}>
-              {muted ? <MutedIcon /> : <VolumeIcon />}
+          <div className="web-player-actions">
+            <button ref={playButton} className="web-player-icon web-player-icon--main" onClick={togglePlay}
+              aria-label={playLabel} title={playLabel}>
+              {paused ? <PlayIcon /> : <PauseIcon />}
             </button>
-            <input type="range" aria-label="Volume" tabIndex={-1} min="0" max="1" step="0.05"
-              value={muted ? 0 : volume} onChange={(event) => changeVolume(Number(event.target.value))} />
+            <button className="web-player-icon" onClick={() => seek(-10)} aria-label="Back 10 seconds" title="Back 10 seconds"><SeekBackIcon /></button>
+            <button className="web-player-icon" onClick={() => seek(10)} aria-label="Forward 10 seconds" title="Forward 10 seconds"><SeekForwardIcon /></button>
+            <div className="web-player-volume">
+              <button className="web-player-icon" onClick={toggleMute} aria-label={muteLabel} title={muteLabel}>
+                {muted ? <MutedIcon /> : <VolumeIcon />}
+              </button>
+              <input type="range" aria-label="Volume" tabIndex={-1} min="0" max="1" step="0.05"
+                value={muted ? 0 : volume} onChange={(event) => changeVolume(Number(event.target.value))} />
+            </div>
           </div>
-          <span className="web-player-spacer" />
-          {onNext && <button className="web-player-pill" onClick={onNext} title="Next episode">
-            <NextEpisodeIcon /><span>Next episode</span>
-          </button>}
-          {!!allMenus.length && <button ref={optionsButton} className="web-player-icon" aria-label="Options" title="Options"
-            aria-expanded={!!panel} onClick={() => (panel ? closePanel() : setPanel("main"))}>
-            <SettingsIcon />
-          </button>}
-          <button className="web-player-icon" onClick={fullscreen} aria-label={fullscreenLabel} title={fullscreenLabel}>
-            {isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
-          </button>
+          <div className="web-player-actions">
+            {onNext && <button className="web-player-pill" onClick={onNext} aria-label="Next episode" title="Next episode">
+              <NextEpisodeIcon /><span>Next episode</span>
+            </button>}
+            {tracks.length > 0 && <button className="web-player-icon" onClick={toggleSubtitles}
+              aria-label="Closed captions" aria-pressed={!!selected} title="Closed captions">
+              <SubtitlesIcon aria-hidden="true" />
+            </button>}
+            {!!allMenus.length && <button ref={optionsButton} className="web-player-icon" aria-label="Options" title="Options"
+              aria-expanded={!!panel} onClick={() => (panel ? closePanel() : setPanel("main"))}>
+              <SettingsIcon />
+            </button>}
+            {pictureInPicture.available && <button className="web-player-icon" onClick={togglePictureInPicture}
+              aria-label="Picture-in-picture" aria-pressed={pictureInPicture.active} title={pictureInPictureLabel}>
+              <PictureInPictureIcon />
+            </button>}
+            {!pictureInPicture.floating && <button className="web-player-icon" onClick={fullscreen} aria-label={fullscreenLabel} title={fullscreenLabel}>
+              {isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
+            </button>}
+          </div>
         </div>
       </div>
       {panel && <OptionsPanel panelRef={panelRef} menus={allMenus} open={panel}
