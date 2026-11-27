@@ -46,7 +46,7 @@ function SourceStatus({ entry }) {
   </span>;
 }
 
-export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision, readOnly, visible }) {
+export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision, readOnly }) {
   const { t } = useTranslation();
   const label = (key, values) => t("settings.sources." + key, values);
   const rowNumber = useRef(0);
@@ -73,9 +73,10 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
       activeTest.current = null;
     };
   }, []);
+  // Tests keep running while other Settings tabs are open; leaving Settings stops them.
   useEffect(() => {
-    if (!visible || readOnly) activeTest.current?.abort();
-  }, [visible, readOnly]);
+    if (readOnly) activeTest.current?.abort();
+  }, [readOnly]);
   useEffect(() => {
     if (!revision) return;
     activeTest.current?.abort();
@@ -92,11 +93,14 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
     setMessage(null);
   }, [revision]);
 
+  // Results stored by another device update rows without unsaved loading edits.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   useEffect(() => {
     function syncResults(event) {
       if (!event.detail?.keys?.includes(STORAGE_KEYS.PLAYER_SOURCES)) return;
       const stored = getSources();
-      const results = new Map(draft.flatMap((row) => rowHasLoadingEdits(serialize(row), stored)
+      const results = new Map(draftRef.current.flatMap((row) => rowHasLoadingEdits(serialize(row), stored)
         ? []
         : [[row.rowKey, stored.find(({ id }) => id === row.id).web]]));
       const refresh = (rows) => rows.map((row) => results.has(row.rowKey) && !rowHasLoadingEdits(serialize(row), stored)
@@ -107,7 +111,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
     }
     window.addEventListener("streambert:storage-changed", syncResults);
     return () => window.removeEventListener("streambert:storage-changed", syncResults);
-  }, [draft]);
+  }, []);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
   const locked = readOnly || running !== null || batch !== null || committing;

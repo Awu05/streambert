@@ -4305,7 +4305,7 @@ export default function SettingsPage({
         {!kids && <div role="tabpanel" id="settings-panel-sources" aria-labelledby="settings-tab-sources" data-settings-tab="sources" hidden={tab !== "sources"}>
           <div ref={secSources} style={{ scrollMarginTop: 80 }}>
             <SourcesSection Toggle={Toggle} Select={SettingsSelect} ConfirmDialog={ConfirmDialog}
-              revision={sourceRevision} readOnly={!household} visible={tab === "sources"} />
+              revision={sourceRevision} readOnly={!household} />
           </div>
         </div>}
 

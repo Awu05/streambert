@@ -208,6 +208,7 @@
         "provider requires verification": "Provider requires verification",
         "live stream, not supported": "Live stream, not supported",
         "protected stream, not supported": "Protected stream, not supported",
+        "stream format not supported": "Stream format not supported",
         "timed out": "Timed out",
         "no address for this title": "No address for this test title",
         "refused": "Stream refused replay ({{status}})",

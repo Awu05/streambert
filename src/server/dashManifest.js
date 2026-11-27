@@ -59,11 +59,12 @@ function inspectRoot(root) {
   if (!root) return { ok: false, reason: "no stream found" };
   if (root.attrs.type !== undefined && root.attrs.type !== "static") return { ok: false, reason: "live stream, not supported" };
   if (someElement(root, ({ name }) => name === "ContentProtection")) return { ok: false, reason: "protected stream, not supported" };
+  // These make the player fetch outside the signed proxy paths.
   if (someElement(root, ({ name, attrs }) =>
     ["Location", "PatchLocation", "ContentSteering"].includes(name) ||
     (name === "UTCTiming" && attrs.schemeIdUri?.startsWith("urn:mpeg:dash:utc:http")) ||
     Object.keys(attrs).some((key) => key === "xml:base" || key.endsWith(":href"))
-  )) return { ok: false, reason: "no stream found" };
+  )) return { ok: false, reason: "stream format not supported" };
   return { ok: true };
 }
 
