@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { getSources } from "../../utils/api";
 import { storage, STORAGE_KEYS } from "../../utils/storage";
 import {
-  applyTestResult, mergeSavedResults, moveSource, rowHasLoadingEdits, saveSources, storeTestResult, testAllSummary,
+  applyTestResult, exportSources, importSources, importSummary, mergeSavedResults, moveSource, parseSourceImport,
+  rowHasLoadingEdits, saveSources, storeTestResult, testAllSummary,
 } from "../../utils/sourceList";
 import { newDefaultSources, resetStatusOnEdit, sourceKinds, validateSource } from "../../shared/sources";
 import SourceEditor from "./SourceEditor";
@@ -62,6 +63,8 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
   const [batch, setBatch] = useState(null);
   const [summary, setSummary] = useState(null);
   const [committing, setCommitting] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null);
+  const importInput = useRef(null);
   const activeTest = useRef(null);
   const mounted = useRef(false);
 
@@ -238,6 +241,43 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
     }
   }
 
+  // Downloads the saved list (without test results) to move or share it.
+  function exportFile() {
+    const blob = new Blob([JSON.stringify(exportSources(getSources()), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "streambert-sources.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function chooseImport(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const parsed = file.size > 1024 * 1024 ? { ok: false, error: "notSources" } : parseSourceImport(await file.text());
+    if (!parsed.ok) {
+      setPendingImport({ error: parsed.error });
+      return;
+    }
+    const current = draft.map(serialize);
+    setPendingImport({
+      file: file.name, count: parsed.sources.length, sources: parsed.sources, invalid: parsed.invalid,
+      summary: importSummary(current, parsed.sources),
+    });
+  }
+
+  // The import only changes the list on screen; Save keeps it.
+  function applyImport(mode) {
+    const next = importSources(draft.map(serialize), pendingImport.sources, mode);
+    setDraft(next.map(makeRow));
+    setEditing(null);
+    setErrors([]);
+    setPendingImport(null);
+    setMessage("imported");
+  }
+
   function save() {
     const result = saveSources(draft.map(serialize));
     if (!result.ok) {
@@ -254,16 +294,16 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
       <div className="source-heading">
         <h2 className="settings-section-title" id="source-settings-title">{t("settings.tabs.sources")}</h2>
         <div className="source-actions source-test-actions">
+          {!readOnly && <button type="button" className="btn btn-secondary" disabled={batch === null && locked}
+            onClick={() => batch ? activeTest.current?.abort() : void testRows(draft, true)}>
+            {label(batch ? "stop" : "testAll")}
+          </button>}
           <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => {
             add({
               id: "", label: label("newName"), enabled: true, idType: "tmdb", progress: "page",
               params: {}, hideCss: [], web: { movie: "untested", tv: "untested", anime: "untested", testedAt: null, reasons: {} },
             });
           }}>{label("add")}</button>
-          {!readOnly && <button type="button" className="btn btn-secondary" disabled={batch === null && locked}
-            onClick={() => batch ? activeTest.current?.abort() : void testRows(draft, true)}>
-            {label(batch ? "stop" : "testAll")}
-          </button>}
         </div>
       </div>
       {(batch || summary) && <p className="source-status" role="status">
@@ -297,6 +337,9 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
               onClick={() => setEditing(editing === entry.rowKey ? null : entry.rowKey)}>
               {label(editing === entry.rowKey ? "close" : "edit")}
             </button>
+            {!readOnly && <button type="button" className="btn btn-ghost source-delete" disabled={locked}
+              aria-label={label("deleteSource", { source: entry.label || label("newName") })}
+              onClick={() => setConfirm(entry.rowKey)}>{label("deleteRow")}</button>}
           </div>
         </div>
         {!batch && running === entry.rowKey && <p className="source-status" role="status">{label("testingStatus")}</p>}
@@ -304,12 +347,32 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
         {editing === entry.rowKey && <fieldset className="source-editor-fields" disabled={locked}>
           <SourceEditor Select={Select} Toggle={Toggle} value={entry} update={(changes) => update(entry, changes)}
             errors={errors.filter(({ rowKey }) => rowKey === entry.rowKey)}
-            focusName={!entry.id} remove={() => setConfirm(entry.rowKey)} />
+            focusName={!entry.id} />
         </fieldset>}
       </div>)}
 
+      {pendingImport && <div className="source-import" role="group" aria-label={label("importTitle", pendingImport)}>
+        {pendingImport.error ? <p className="source-error" role="alert">{label("importError." + pendingImport.error)}</p> : <>
+          <strong>{label("importTitle", pendingImport)}</strong>
+          <span className="source-status">
+            {label("importSummary", pendingImport.summary)}
+            {pendingImport.invalid > 0 && <> · {label("importInvalid", { count: pendingImport.invalid })}</>}
+          </span>
+          <div className="source-actions">
+            <button type="button" className="btn btn-primary" onClick={() => applyImport("merge")}>{label("importMerge")}</button>
+            <button type="button" className="btn btn-secondary" onClick={() => applyImport("replace")}>{label("importReplace")}</button>
+          </div>
+        </>}
+        <button type="button" className="btn btn-ghost" onClick={() => setPendingImport(null)}>{label(pendingImport.error ? "dismiss" : "cancel")}</button>
+      </div>}
+
       <div className="source-heading source-footer">
-        <button type="button" className="btn btn-ghost" disabled={locked} onClick={() => setConfirm("defaults")}>{label("reset")}</button>
+        <div className="source-actions">
+          <button type="button" className="btn btn-ghost" disabled={locked} onClick={() => setConfirm("defaults")}>{label("reset")}</button>
+          <button type="button" className="btn btn-ghost" disabled={locked} onClick={exportFile}>{label("export")}</button>
+          <button type="button" className="btn btn-ghost" disabled={locked} onClick={() => importInput.current?.click()}>{label("import")}</button>
+          <input ref={importInput} type="file" accept="application/json,.json" hidden onChange={chooseImport} />
+        </div>
         <div className="source-actions">
           {message && <span role="status">{label(message)}</span>}
           <button type="button" className="btn btn-primary" disabled={locked || !dirty} onClick={save}>{label("save")}</button>

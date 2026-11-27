@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-export default function SourceEditor({ value, update, errors, remove, focusName, Select, Toggle }) {
+export default function SourceEditor({ value, update, errors, focusName, Select, Toggle }) {
   const { t } = useTranslation();
   const [advanced, setAdvanced] = useState(false);
   const label = (field) => t("settings.sources.field." + field);
@@ -85,7 +85,6 @@ export default function SourceEditor({ value, update, errors, remove, focusName,
           {text("onlyElement")}
         </>}
       </>}
-      <button type="button" className="btn btn-ghost source-delete" onClick={remove}>{t("settings.sources.delete")}</button>
     </div>
   );
 }
