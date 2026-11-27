@@ -8,7 +8,7 @@ const CACHE_TTL = 1000 * 60 * 60 * 24 * 7; // 7 days
 
 function getCache() {
   try {
-    return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+    return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}") || {};
   } catch {
     return {};
   }
@@ -32,10 +32,10 @@ export function clearAniSkipCache() {
  * @param {number} episodeNumber
  * @returns {{ intro?: { startTime, endTime }, outro?: { startTime, endTime } } | null}
  */
-export async function fetchAniSkipTimings(malId, episodeNumber) {
+export async function fetchAniSkipTimings(malId, episodeNumber, { duration = 0, signal } = {}) {
   if (!malId || !episodeNumber) return null;
 
-  const cacheKey = `${malId}_${episodeNumber}`;
+  const cacheKey = duration ? `matched_${malId}_${episodeNumber}_${duration}` : `${malId}_${episodeNumber}`;
   const cache = getCache();
   const hit = cache[cacheKey];
   if (hit && Date.now() < hit.expiresAt) return hit.data;
@@ -43,7 +43,8 @@ export async function fetchAniSkipTimings(malId, episodeNumber) {
   try {
     const res = await fetch(
       `${ANISKIP_API}/skip-times/${malId}/${episodeNumber}` +
-        `?types[]=op&types[]=ed&types[]=mixed-op&types[]=mixed-ed&episodeLength=0`,
+        `?types[]=op&types[]=ed&types[]=mixed-op&types[]=mixed-ed&episodeLength=${duration}`,
+      { signal },
     );
 
     // 404 = no data for this episode, cache as null
@@ -63,17 +64,19 @@ export async function fetchAniSkipTimings(malId, episodeNumber) {
 
     const result = {};
     for (const entry of data.results) {
-      const { skipType, interval } = entry;
+      const { skipType, interval, episodeLength } = entry;
       // op / mixed-op → intro,  ed / mixed-ed → outro
       if (skipType === "op" || skipType === "mixed-op") {
         result.intro = {
           startTime: interval.startTime,
           endTime: interval.endTime,
+          episodeLength,
         };
       } else if (skipType === "ed" || skipType === "mixed-ed") {
         result.outro = {
           startTime: interval.startTime,
           endTime: interval.endTime,
+          episodeLength,
         };
       }
     }

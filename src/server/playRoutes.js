@@ -51,6 +51,7 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
         try { return [{ src: signedStreamPath(entry, auth, entry.pathFor(url)), lang }]; } catch { return []; }
       }),
       external: streamLink(origin, entry, auth),
+      ...(media.animeEpisode && { animeEpisode: media.animeEpisode }),
     });
   }
 
@@ -168,6 +169,7 @@ function createPlayHandler({ resolver, streams, auth, registry, hub, hiAnimeUser
           kind: result.isDirectMp4 ? "mp4" : "hls",
           headers: { referer: result.referer || "https://hianime.at/", userAgent: hiAnimeUserAgent },
           subtitles: result.subtitle ? [{ url: result.subtitle, lang: "en" }] : [],
+          animeEpisode: result.malId ? { malId: result.malId, number: result.episodeNumber } : undefined,
         });
         break;
       }

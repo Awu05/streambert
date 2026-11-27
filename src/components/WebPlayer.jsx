@@ -1,10 +1,12 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { dashLevels } from "../web/dashLevels";
 import { mapPlayerKey } from "../web/playerKeys";
 import { pickInDirection } from "../utils/gamepadSpatialNav";
 import { trackLanguage } from "../web/subtitleLabel";
+import { activeSkipSegment, fetchSkipSegments } from "../web/skipSegments";
+import { storage, STORAGE_KEYS } from "../utils/storage";
 import { usePictureInPicture } from "../web/usePictureInPicture";
 import { usePictureBox, useSubtitles } from "../web/usePlayerSubtitles";
 import {
@@ -18,6 +20,7 @@ const FOCUSABLE = 'button:not(:disabled), a[href], input:not([tabindex="-1"])';
 const DIRECTIONS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
 const BACK_KEYS = ["Escape", "Backspace", "GoBack", "BrowserBack"];
 const EMPTY_TRACKS = [];
+const EMPTY_SEGMENTS = [];
 
 // Left/Right stay within the focused control's row; Up/Down move between rows.
 function nextControl(from, candidates, direction) {
@@ -101,7 +104,7 @@ export default function WebPlayer(props) {
 
 function Player({
   src, kind, startAt, subtitles = EMPTY_TRACKS, pickedSubtitle, title, accent, onProgress, onEnded,
-  onClose, onError, onNext, overlay, menus = [],
+  onClose, onError, onNext, overlay, menus = [], skipMedia,
   host, home,
 }) {
   const { t } = useTranslation();
@@ -110,6 +113,7 @@ function Player({
   const controlsRef = useRef(null);
   const panelRef = useRef(null);
   const playButton = useRef(null);
+  const skipButton = useRef(null);
   const optionsButton = useRef(null);
   const hls = useRef(null);
   const dash = useRef(null);
@@ -126,6 +130,8 @@ function Player({
   const [started, setStarted] = useState(false);
   const [at, setAt] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [skipMode, setSkipMode] = useState(() => storage.get(STORAGE_KEYS.INTRO_SKIP_MODE) || "manual");
+  const [skipSegments, setSkipSegments] = useState(EMPTY_SEGMENTS);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [autoMuted, setAutoMuted] = useState(false);
@@ -140,6 +146,34 @@ function Player({
     videoRef, subtitles, pickedSubtitle, pictureInPicture.native, dash, dashTracks,
   );
   const picture = usePictureBox(videoRef);
+  const { tmdbId, mediaType, season, episode, malId, animeEpisode } = skipMedia || {};
+  const hasSkipMedia = Boolean(tmdbId || malId);
+  const skipEnabled = skipMode === "auto" || skipMode === "manual";
+  const lookupDuration = Math.round(duration);
+  const skipSegment = activeSkipSegment(skipSegments, at, duration);
+  const attachSkipButton = useCallback((button) => {
+    const previous = skipButton.current;
+    if (!button && previous && previous.ownerDocument.activeElement === previous) container.current?.focus();
+    skipButton.current = button;
+  }, []);
+
+  useEffect(() => {
+    setSkipSegments(EMPTY_SEGMENTS);
+    if (!skipEnabled || !hasSkipMedia || lookupDuration <= 0) return;
+    const controller = new AbortController();
+    fetchSkipSegments({ tmdbId, mediaType, season, episode, malId, animeEpisode,
+      duration: lookupDuration, signal: controller.signal }).then((segments) => {
+      if (!controller.signal.aborted) setSkipSegments(segments);
+    });
+    return () => controller.abort();
+  }, [src, tmdbId, mediaType, season, episode, malId, animeEpisode, lookupDuration, hasSkipMedia, skipEnabled]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (skipMode !== "auto" || paused || video.paused || video.seeking) return;
+    const segment = activeSkipSegment(skipSegments, video.currentTime, video.duration, { automatic: true });
+    if (segment) video.currentTime = segment.endTime;
+  }, [skipMode, paused, at, duration, skipSegments]);
 
   function showControls() {
     setControls(true);
@@ -294,6 +328,14 @@ function Player({
       video.currentTime = Math.min(video.duration, Math.max(0, video.currentTime + delta));
     }
   }
+  function skipCurrentSegment() {
+    const video = videoRef.current;
+    const segment = activeSkipSegment(skipSegments, video.currentTime, video.duration);
+    if (segment) {
+      video.currentTime = segment.endTime;
+      container.current.focus();
+    }
+  }
   function changeVolume(value) {
     const video = videoRef.current;
     video.volume = Math.max(0, Math.min(1, value));
@@ -353,6 +395,27 @@ function Player({
   }
 
   const playerMenus = [];
+  if (hasSkipMedia) {
+    const items = [
+      ["off", "settings.playback.introOff"],
+      ["manual", "settings.playback.introManual"],
+      ["auto", "settings.playback.introAuto"],
+    ].map(([mode, labelKey]) => ({
+      key: mode,
+      label: t(labelKey),
+      selected: skipMode === mode,
+      onSelect: () => {
+        setSkipMode(mode);
+        storage.set(STORAGE_KEYS.INTRO_SKIP_MODE, mode);
+      },
+    }));
+    playerMenus.push({
+      id: "intro-skip",
+      label: t("settings.playback.introWebTitle"),
+      value: items.find((item) => item.selected)?.label,
+      items,
+    });
+  }
   if (tracks.length) {
     playerMenus.push({
       id: "subtitles", label: "Subtitles",
@@ -400,7 +463,7 @@ function Player({
       if (mapped.action === "playPause") togglePlay();
       if (mapped.action === "seekBack") seek(-10);
       if (mapped.action === "seekForward") seek(10);
-      if (mapped.action === "showControls") playButton.current?.focus();
+      if (mapped.action === "showControls") (skipButton.current || playButton.current)?.focus();
       if (mapped.action === "exit") onClose();
       if (mapped.action === "hintExit") showHint("Press ↓ again to exit", 1900);
       return;
@@ -475,6 +538,11 @@ function Player({
         style={{ bottom: captionBottom, fontSize: captionSize }}><span>{caption}</span></div>}
       {overlay}
       {hint && <div className="web-player-hint" role="status">{hint}</div>}
+      {skipMode === "manual" && skipSegment && !overlay && !hint && !panel && (
+        <button ref={attachSkipButton} className="btn btn-secondary web-player-skip" onClick={skipCurrentSegment}>
+          {t(skipSegment.kind === "intro" ? "player.skipIntro" : "player.skipEnding")}
+        </button>
+      )}
       {autoMuted && muted && <button className="web-player-unmute" onClick={toggleMute}>
         <MutedIcon /><span>Tap to unmute</span>
       </button>}

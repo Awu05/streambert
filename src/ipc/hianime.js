@@ -812,6 +812,7 @@ async function resolveHiAnime(args = {}, report = () => {}) {
       referer: stream.referer,
       subtitle: stream.subtitle,
       malId: stream.malId,
+      episodeNumber: adjustedEpisodeNumber,
       searchTitle,
       matchedTitle: show.title,
     };

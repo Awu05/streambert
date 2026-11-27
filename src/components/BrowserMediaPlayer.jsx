@@ -181,6 +181,8 @@ export default function BrowserMediaPlayer({
     return createPortal(<WebPlayer key={stream.streamId}
       src={stream.src} kind={stream.kind} startAt={progressStart.current} subtitles={subtitles}
       pickedSubtitle={customTracks[customTracks.length - 1]}
+      skipMedia={{ tmdbId: itemId, mediaType, season, episode,
+        malId: stream.animeEpisode?.malId, animeEpisode: stream.animeEpisode?.number }}
       title={title} accent={accent} onClose={onClose} onNext={onNext} onEnded={onEnded} overlay={overlay}
       onError={(message, detail) => setStatus({ mode: "error", message, detail })}
       onProgress={(value) => recordProgress(value, { progressKey, saveProgress, markWatched, watchedThreshold, alreadyMarked: marked })}
