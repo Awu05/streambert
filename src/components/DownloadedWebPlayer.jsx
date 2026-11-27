@@ -42,6 +42,8 @@ export default function DownloadedWebPlayer({ download, progressKey, onClose, sa
       default: index === 0,
     })).filter((track) => track.src);
     return createPortal(<WebPlayer title={download.name} src={state.links.src} kind="mp4" startAt={storage.get("dlTime_" + key)}
+      skipMedia={{ tmdbId: download.tmdbId || download.mediaId, mediaType: download.mediaType,
+        season: download.season, episode: download.episode }}
       subtitles={subtitles} onClose={onClose} onError={(message, detail) => setState({ mode: "error", message, detail })}
       onProgress={(value) => recordProgress(value, {
         progressKey: key, watchedThreshold: storage.get("watchedThreshold") ?? 120,

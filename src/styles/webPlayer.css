@@ -147,8 +147,13 @@ body.tv-remote .web-player :focus-visible { outline-width: 5px; }
 }
 .web-player-hint { max-width: calc(100% - 2.5rem); }
 .web-player-next .btn { padding: 8px 16px; }
+.web-player-skip {
+  position: absolute; z-index: 2; top: calc(max(1rem, env(safe-area-inset-top)) + 4rem);
+  right: max(1.25rem, env(safe-area-inset-right)); min-height: 44px;
+}
 
 .web-player[data-floating="true"] .web-player-top { padding-top: .25rem; padding-bottom: 1rem; }
+.web-player[data-floating="true"] .web-player-skip { top: 3rem; }
 .web-player[data-floating="true"] .web-player-controls { padding-top: 1rem; padding-bottom: .25rem; }
 .web-player[data-floating="true"] .web-player-bar { min-height: 40px; }
 .web-player[data-floating="true"] .web-player-icon,

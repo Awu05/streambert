@@ -108,6 +108,8 @@
     "trySource": "Try {{source}}",
     "streamError": "The stream could not play. Try another source.",
     "pictureInPictureError": "Couldn't change picture-in-picture mode. Try again.",
+    "skipIntro": "Skip Intro",
+    "skipEnding": "Skip Ending",
     "dashUnsupported": "This stream can't play on this device. Try another source or open it in another app.",
     "dashNoDownload": "Downloading isn't available for this stream.",
     "sourceStatus": {
@@ -427,13 +429,15 @@
       "left": "Left Side",
       "right": "Right Side",
       "introTitle": "Anime Intro Skip",
+      "introWebTitle": "Intro and Ending Skip",
       "introDesc": "Uses <hl>AniSkip</hl> to detect and skip opening/ending segments. Only active for animes and when using <hl>HiAnime</hl> as source.",
+      "introWebDesc": "Skip intros and endings when timestamps are available from <hl>TheIntroDB</hl> or <hl>AniSkip</hl>.",
       "introOff": "Off",
-      "introOffDesc": "Intro skip is disabled.",
+      "introOffDesc": "Do not skip intros or endings.",
       "introAuto": "Auto Skip",
       "introAutoDesc": "Automatically jumps past the intro/outro when reached.",
       "introManual": "Manual Skip",
-      "introManualDesc": "Shows a \"Skip Intro\" button at the bottom of the player."
+      "introManualDesc": "Shows a skip button while an intro or ending is playing."
     },
     "subtitles": {
       "title": "Subtitle Downloads",

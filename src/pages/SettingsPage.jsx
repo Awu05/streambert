@@ -3467,7 +3467,7 @@ export default function SettingsPage({
     () => storage.get(STORAGE_KEYS.WATCHED_THRESHOLD) ?? 20,
   );
   const [introSkipMode, setIntroSkipMode] = useState(
-    () => storage.get(STORAGE_KEYS.INTRO_SKIP_MODE) || "off",
+    () => storage.get(STORAGE_KEYS.INTRO_SKIP_MODE) || (isWebBuild() ? "manual" : "off"),
   );
   const [autoplayNextEnabled, setAutoplayNextEnabled] = useState(
     () => storage.get(STORAGE_KEYS.AUTOPLAY_NEXT_ENABLED) ?? true,
@@ -4180,7 +4180,7 @@ export default function SettingsPage({
             {/* Intro Skip */}
             <div style={{ marginBottom: 40 }}>
               <div className="settings-section-title">
-                {t("settings.playback.introTitle")}
+                {t(isWebBuild() ? "settings.playback.introWebTitle" : "settings.playback.introTitle")}
               </div>
               <div
                 style={{
@@ -4191,7 +4191,7 @@ export default function SettingsPage({
                 }}
               >
                 <Trans
-                  i18nKey="settings.playback.introDesc"
+                  i18nKey={isWebBuild() ? "settings.playback.introWebDesc" : "settings.playback.introDesc"}
                   components={{
                     hl: <span style={{ color: "var(--text)", fontWeight: 600 }} />,
                   }}

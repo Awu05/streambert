@@ -1314,7 +1314,7 @@ export default function TVPage({
   useEffect(() => {
     setSkipTimings(null);
     setSkipPrompt(null);
-    if (introSkipMode === "off" || !isAsync || !isAnime) return;
+    if (isWebBuild() || introSkipMode === "off" || !isAsync || !isAnime) return;
     const anilistId = anilistData?.idMal;
     const epNum = selectedEp?.episode_number;
     if (!anilistId || !epNum) return;
