@@ -4128,6 +4128,7 @@ html[data-win-titlebar][data-maximized] .main {
 .source-param-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; margin: 6px 0; }
 .source-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .source-advanced { justify-self: start; }
+.source-import { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .source-row .source-error, .source-delete { color: var(--red); }
 .player-no-source { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; padding: 20px; }
 
