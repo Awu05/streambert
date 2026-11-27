@@ -73,6 +73,7 @@ async function proxyStream(target, req, res, {
   getHeaders,
   agents,
   playlist = false,
+  manifest,
 }) {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -99,7 +100,7 @@ async function proxyStream(target, req, res, {
         Accept: "*/*",
         "Accept-Encoding": "identity",
       };
-      if (req.headers.range) headers.Range = req.headers.range;
+      if (!manifest && req.headers.range) headers.Range = req.headers.range;
       const method = req.method === "HEAD" ? "HEAD" : "GET";
       const upstream = await openStream(url, headers, agents?.[url.protocol], controller.signal, lookup, method);
       const status = upstream.statusCode || 502;
@@ -109,6 +110,13 @@ async function proxyStream(target, req, res, {
         continue;
       }
 
+      if (manifest && status >= 200 && status < 300) {
+        if (status !== 200) throw new Error("Incomplete DASH manifest");
+        const body = method === "GET" ? manifest(await readPlaylist(upstream), url) : undefined;
+        if (method === "HEAD") upstream.resume();
+        res.writeHead(200, { ...responseHeaders, "Content-Type": "application/dash+xml" }).end(body);
+        return;
+      }
       const isPlaylist = playlist || /\.m3u8$/i.test(url.pathname) ||
         /mpegurl/i.test(upstream.headers["content-type"] || "");
       if (status === 200 && isPlaylist && method === "GET") {
@@ -140,4 +148,4 @@ async function proxyStream(target, req, res, {
   }
 }
 
-module.exports = { proxyStream, rewritePlaylist };
+module.exports = { proxyStream, rewritePlaylist, MAX_PLAYLIST_BYTES };

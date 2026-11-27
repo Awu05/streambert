@@ -6,8 +6,8 @@ const { clickFirstScript } = require("../shared/sources.js");
 
 function classifyResponse(path, type) {
   if (/\.m3u8$/i.test(path) || /mpegurl/i.test(type)) return "hls";
-  if (/\.mp4$/i.test(path) || /^video\/mp4/i.test(type)) return "mp4";
   if (/\.mpd$/i.test(path) || /dash\+xml/i.test(type)) return "dash";
+  if (/\.mp4$/i.test(path) || /^video\/mp4/i.test(type)) return "mp4";
   if (/\.vtt$/i.test(path) || /text\/vtt/i.test(type)) return "vtt";
   return null;
 }
@@ -58,10 +58,9 @@ function createHiddenPageCapture({ BrowserWindow, clickPlayDeep, buildCleanUserA
         .find(([name]) => name.toLowerCase() === "content-type")?.[1]?.join(";") || "";
       const kind = classifyResponse(new URL(details.url).pathname, type);
       if (kind === "hls") capture.hls ??= { url: details.url, kind, headers };
-      if (kind === "mp4" && responseSize(details.responseHeaders) >= MIN_MP4_BYTES) {
-        capture.mp4 ??= { media: { url: details.url, kind, headers }, at: Date.now() };
+      if (kind === "dash" || (kind === "mp4" && responseSize(details.responseHeaders) >= MIN_MP4_BYTES)) {
+        capture[kind] ??= { media: { url: details.url, kind, headers }, at: Date.now() };
       }
-      if (kind === "dash") capture.dash = true;
       if (kind === "vtt") capture.subtitles.set(details.url, extractSubtitleLang(details.url) || "und");
     },
     onError(details) {
@@ -92,7 +91,8 @@ function createHiddenPageCapture({ BrowserWindow, clickPlayDeep, buildCleanUserA
         let nextClickAt = Date.now() + 2500;
         let clicks = 0;
         let clickedFirst = false;
-        while (!capture.hls && !(capture.mp4 && Date.now() - capture.mp4.at >= 1500)) {
+        const graceElapsed = () => Date.now() - (capture.dash ?? capture.mp4)?.at >= 1500;
+        while (!capture.hls && !graceElapsed()) {
           if (loadError && loadError.code !== "ERR_ABORTED") throw new Error("Could not load the source");
           if (Date.now() >= nextClickAt && clicks < 4) {
             nextClickAt = Date.now() + 3500;
@@ -110,13 +110,10 @@ function createHiddenPageCapture({ BrowserWindow, clickPlayDeep, buildCleanUserA
         }
         if (capture.hls) await delay(1200, undefined, { signal });
         return {
-          ...(capture.hls ?? capture.mp4.media),
+          ...(capture.hls ?? capture.dash?.media ?? capture.mp4.media),
           subtitles: [...capture.subtitles].map(([url, lang]) => ({ url, lang })),
         };
       } catch (error) {
-        if (signal.aborted && capture.dash && /timed out/i.test(signal.reason?.message)) {
-          throw new Error("found DASH, not supported");
-        }
         throw signal.aborted ? signal.reason : error;
       } finally {
         signal.removeEventListener("abort", abort);
