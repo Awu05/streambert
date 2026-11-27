@@ -1,3 +1,4 @@
+const newSourcesTestedAt = Date.UTC(2026, 10, 27);
 const builtIns = [
   {
     id: "vidsrc", label: "VidSrc", progress: "frames", interceptFullscreen: true,
@@ -62,6 +63,30 @@ const builtIns = [
     id: "kinohub", label: "KinoHub", note: "🇷🇺", idType: "kinopoisk",
     progress: "frames", interceptFullscreen: true, onlyElement: "section.player_section",
     movieUrl: "https://on.kinohub.vip/movie/{id}",
+  },
+  {
+    id: "vidy", label: "Vidy", params: { autoplay: "true" },
+    movieUrl: "https://www.vidy.st/movie/{id}",
+    tvUrl: "https://www.vidy.st/tv/{id}/{season}/{episode}",
+    web: { movie: "works", tv: "works", testedAt: newSourcesTestedAt },
+  },
+  {
+    id: "embedwave", label: "Embedwave",
+    movieUrl: "https://embedwave.cc/embed/movie/{id}",
+    tvUrl: "https://embedwave.cc/embed/tv/{id}/{season}/{episode}",
+    web: { movie: "works", tv: "works", testedAt: newSourcesTestedAt },
+  },
+  {
+    id: "viduki", label: "Viduki",
+    movieUrl: "https://www.viduki.net/1/movie/{id}",
+    tvUrl: "https://www.viduki.net/1/tv/{id}/{season}/{episode}",
+    web: { movie: "works", tv: "works", testedAt: newSourcesTestedAt },
+  },
+  {
+    id: "moviesapi", label: "MoviesAPI",
+    movieUrl: "https://moviesapi.to/movie/{id}",
+    tvUrl: "https://moviesapi.to/tv/{id}/{season}/{episode}",
+    web: { movie: "works", testedAt: newSourcesTestedAt },
   },
   { id: "hianime", label: "HiAnime", tag: "ANIME", resolver: "hianime" },
 ];
@@ -143,12 +168,16 @@ export function validateSource(entry) {
     typeof value !== "string" || value.length > 200)) error("hideCss", "invalidSelectors");
 
   const web = entry.web === undefined ? {} : entry.web;
-  source.web = { testedAt: Number.isFinite(web?.testedAt) ? web.testedAt : null };
+  source.web = { testedAt: Number.isFinite(web?.testedAt) ? web.testedAt : null, reasons: {} };
   if (!record(web)) error("web", "invalidOption");
   for (const kind of kinds) {
     const status = web?.[kind] ?? "untested";
     if (!statuses.includes(status)) error("web", "invalidOption");
     source.web[kind] = status;
+    const reason = record(web?.reasons) ? web.reasons[kind] : null;
+    if (status === "failed" && typeof reason === "string" && reason.length <= 100) {
+      source.web.reasons[kind] = reason;
+    }
   }
   return errors.length ? { ok: false, errors } : { ok: true, source };
 }
@@ -195,14 +224,24 @@ export function newDefaultSources(saved) {
   return DEFAULT_SOURCES.filter(({ id }) => !saved.some((source) => source.id === id));
 }
 
+export function loadingFieldsEqual(a, b, kind) {
+  const fields = ["resolver", "idType", "cleanUserAgent", "clickFirst", "langParam",
+    ...(kind ? [kind] : kinds).map((type) => type + "Url")];
+  if (fields.some((field) => a[field] !== b[field])) return false;
+  if (a.params === b.params) return true;
+  if (!record(a.params) || !record(b.params)) return false;
+  const entries = Object.entries(a.params);
+  return entries.length === Object.keys(b.params).length &&
+    entries.every(([key, value]) => Object.hasOwn(b.params, key) && b.params[key] === value);
+}
+
 export function resetStatusOnEdit(previous, next) {
   if (!previous) return next;
-  const params = (entry) => JSON.stringify(Object.entries(entry.params ?? {}).sort(([a], [b]) => a.localeCompare(b)));
-  const sharedChanged = ["idType", "cleanUserAgent", "clickFirst", "langParam"].some((key) => previous[key] !== next[key]) ||
-    params(previous) !== params(next);
-  const web = { ...next.web };
+  const web = { ...next.web, reasons: { ...next.web.reasons } };
   for (const kind of kinds) {
-    if (sharedChanged || previous[kind + "Url"] !== next[kind + "Url"]) web[kind] = "untested";
+    if (loadingFieldsEqual(previous, next, kind)) continue;
+    web[kind] = "untested";
+    delete web.reasons[kind];
   }
   if (kinds.every((kind) => web[kind] === "untested")) web.testedAt = null;
   return { ...next, web };

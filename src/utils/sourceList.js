@@ -27,13 +27,16 @@ export function saveSources(draft) {
 }
 
 export function applyTestResult(source, result, testedAt) {
-  const web = { ...source.web, testedAt };
-  const lastReasons = {};
+  const web = { ...source.web, testedAt, reasons: { ...source.web.reasons } };
   for (const kind of sourceKinds(source)) {
     const entry = result[kind];
     if (!entry) continue;
     web[kind] = entry.status;
-    if (entry.reason) lastReasons[kind] = entry.reason;
+    if (entry.status === "failed" && typeof entry.reason === "string" && entry.reason.length <= 100) {
+      web.reasons[kind] = entry.reason;
+    } else {
+      delete web.reasons[kind];
+    }
   }
-  return { ...source, web, lastReasons };
+  return { ...source, web };
 }

@@ -32,13 +32,13 @@ function SourceStatus({ entry }) {
   }
   return <span className="source-status">
     {kinds.map((kind) => {
-      const reason = entry.lastReasons?.[kind];
+      const reason = entry.web.reasons?.[kind];
       const refusal = reason?.match(/^stream refused replay \((.+)\)$/);
       const detail = refusal
         ? t("settings.sources.reason.refused", {
           status: refusal[1] === "network error" ? t("settings.sources.reason.networkError") : refusal[1],
         })
-        : reason && t("settings.sources.reason." + reason);
+        : reason && t("settings.sources.reason." + reason, { defaultValue: reason });
       return <span key={kind}>{t("settings.sources.kind." + kind)} · {detail || t("player.sourceStatus." + entry.web[kind])}</span>;
     })}
   </span>;
@@ -90,11 +90,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
     const next = { ...entry, ...changes };
     const before = serialize(entry);
     const after = serialize(next);
-    if (["movieUrl", "tvUrl", "animeUrl"].some((field) => field in changes) ||
-      ["idType", "paramRows", "cleanUserAgent", "clickFirst", "langParam"].some((field) => field in changes)) {
-      next.web = resetStatusOnEdit(before, after).web;
-      next.lastReasons = Object.fromEntries(Object.entries(next.lastReasons ?? {}).filter(([kind]) => next.web[kind] === "failed"));
-    }
+    next.web = resetStatusOnEdit(before, after).web;
     setDraft(draft.map((row) => row.rowKey === entry.rowKey ? next : row));
     setErrors(errors.filter(({ rowKey, field }) => rowKey !== entry.rowKey || !(field in changes || field === "params")));
     setMessage(null);
@@ -144,7 +140,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
       if (list === null) storage.remove(STORAGE_KEYS.PLAYER_SOURCES);
       else storage.set(STORAGE_KEYS.PLAYER_SOURCES, list);
       if (await storage.flush() === false) throw new Error("Source storage did not sync");
-      const next = getSources().map((source, index) => makeRow(list?.length ? { ...source, lastReasons: draft[index]?.lastReasons } : source));
+      const next = getSources().map(makeRow);
       setBaseline(next);
       setDraft(next);
       setEditing(null);
@@ -175,7 +171,7 @@ export default function SourcesSection({ Toggle, Select, ConfirmDialog, revision
         <button type="button" className="btn btn-secondary" disabled={locked} onClick={() => {
           add({
             id: "", label: label("newName"), enabled: true, idType: "tmdb", progress: "page",
-            params: {}, hideCss: [], web: { movie: "untested", tv: "untested", anime: "untested", testedAt: null },
+            params: {}, hideCss: [], web: { movie: "untested", tv: "untested", anime: "untested", testedAt: null, reasons: {} },
           });
         }}>{label("add")}</button>
       </div>
