@@ -3,6 +3,7 @@
     <string name="connect">Connect</string>
     <string name="connecting">Connecting…</string>
     <string name="server_unreachable">Can’t reach your Streambert server</string>
+    <string name="web_view_stopped">Android stopped the web page. Try opening it again.</string>
     <string name="server_not_found">No Streambert server answered at %1$s</string>
     <string name="certificate_untrusted">The server’s security certificate isn’t trusted</string>
     <string name="retry">Retry</string>

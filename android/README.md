@@ -9,7 +9,7 @@ The Android TV and phone app connects to a running Streambert web server. Stream
 3. Open Streambert and enter the address of your [Streambert web server](../docker/README.md), such as `http://192.168.1.5:8080`. After connecting, sign in with your server password and select a profile. Update the server to a version that includes Android support for the native Back and Settings integration.
 4. On Android TV, enable **TV remote / keyboard navigation** in Streambert’s interface settings. Press Back to close the current dialog, player, or page.
 
-You can change the server and check for updates under **Settings → Android app**. The app checks GitHub automatically on startup and after returning to the foreground when the last check was over 24 hours ago. Android asks you to allow Streambert to install apps the first time you update, then shows its install confirmation.
+You can change the server and check for updates under **Settings → Android app**. From sign-in, press Back to reach the native dialog and choose **Change server**. The app checks GitHub automatically on startup and after returning to the foreground when the last check was over 24 hours ago. Android asks you to allow Streambert to install apps the first time you update, then shows its install confirmation.
 
 ## Build with Docker
 
@@ -44,4 +44,4 @@ Back up the keystore and passwords. Android requires the same signing key for ev
 
 For a local signed build, set `STREAMBERT_KEYSTORE`, `STREAMBERT_KEYSTORE_PASSWORD`, `STREAMBERT_KEY_ALIAS`, and `STREAMBERT_KEY_PASSWORD` in the build environment. Alternatively, put `storeFile`, `storePassword`, `keyAlias`, and `keyPassword` in the ignored `android/keystore.properties`. The keystore path must be visible to Gradle. Run `./gradlew assembleRelease -PappVersion=2.16.0` from `android/`, substituting the release version.
 
-The GitHub workflow builds and attaches a signed APK on a version tag when `android/` differs from the previous tag. To build the APK for an existing release, run **Android app** from the Actions tab, enter the release tag, and select **force**.
+The GitHub workflow builds and attaches a signed APK on a new version tag when `android/` differs from the latest release with a published APK. If a build or upload fails, the next eligible tag still includes those changes. To rebuild the APK for an existing release, run **Android app** from the Actions tab, enter the release tag, and select **force**.

@@ -19,7 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-${{ inputs.tag || github.ref }}
+  group: android-${{ (inputs.tag || github.ref_type == 'tag') && 'release' || github.ref }}
+  queue: max
 
 jobs:
   build:
@@ -39,20 +40,44 @@ jobs:
       - name: Check for Android changes
         id: changes
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [[ -z "$TAG" ]]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if [[ ! "$TAG" =~ ^[0-9]+\.[0-9]{1,2}\.[0-9]{1,2}$ ]]; then
+            echo "::notice::Skipping Android build for non-version tag $TAG"
+            exit 0
+          fi
           ref="refs/tags/$TAG"
           git rev-parse --verify "$ref^{commit}" > /dev/null
-          previous=$(git describe --tags --abbrev=0 "$ref^" 2>/dev/null || true)
-          if [[ "$FORCE" == true || -z "$previous" ]] || [[ -n "$(git diff --name-only "refs/tags/$previous" "$ref" -- android/)" ]]; then
-            echo "build=true" >> "$GITHUB_OUTPUT"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::android/ unchanged since $previous, no APK for $TAG"
+          if [[ "$FORCE" != true ]]; then
+            published=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -r '
+              .[][] | select(.draft == false and .prerelease == false)
+              | .tag_name as $tag
+              | select($tag | test("^[0-9]+\\.[0-9]{1,2}\\.[0-9]{1,2}$"))
+              | select(any(.assets[]; .name == "Streambert-Android-\($tag).apk" and .state == "uploaded" and .size > 0))
+              | $tag')
+            previous=$(printf '%s\n' "$published" | sort -Vr | sed -n '1p')
+            if [[ -n "$previous" ]]; then
+              newest=$(printf '%s\n' "$previous" "$TAG" | sort -Vr | sed -n '1p')
+              if [[ "$newest" == "$previous" ]]; then
+                echo "::notice::Android $previous is already published"
+                exit 0
+              fi
+              if git diff --quiet "refs/tags/$previous" "$ref" -- android/; then
+                echo "::notice::android/ unchanged since published APK $previous, no APK for $TAG"
+                exit 0
+              else
+                status=$?
+                if [[ "$status" != 1 ]]; then exit "$status"; fi
+              fi
+            fi
           fi
+          echo "build=true" >> "$GITHUB_OUTPUT"
+          echo "release=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         if: steps.changes.outputs.build == 'true'

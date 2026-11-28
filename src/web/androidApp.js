@@ -27,7 +27,7 @@ export async function androidRequest(type, payload = {}) {
     const timeout = setTimeout(() => {
       pending.delete(id);
       reject(new Error("The Android app did not respond"));
-    }, 15_000);
+    }, type === "checkUpdates" ? 60_000 : 15_000);
     pending.set(id, (reply) => {
       clearTimeout(timeout);
       pending.delete(id);
@@ -43,26 +43,30 @@ export async function androidRequest(type, payload = {}) {
   });
 }
 
-export function androidBackAction({ playerOpen, overlayOpen, navDepth }) {
+export function androidBackAction({ playerOpen, overlayOpen, navDepth, panelOpen = false, overlaysOnly = false }) {
   if (overlayOpen) return "overlay";
+  if (panelOpen) return "player";
+  if (overlaysOnly) return null;
   if (playerOpen) return "player";
   if (navDepth > 0) return "nav";
   return null;
 }
 
 export function installAndroidBack({ getNavDepth = () => 0, navigateBack } = {}) {
-  const handleBack = () => {
+  const handleBack = (overlaysOnly = false) => {
     const player = document.querySelector("[data-web-player]");
+    const panel = player?.querySelector('[role="menu"]');
     const action = androidBackAction({
       playerOpen: !!player,
       overlayOpen: hasActiveOverlay(),
       navDepth: getNavDepth(),
+      panelOpen: !!panel,
+      overlaysOnly,
     });
     if (action === "overlay") {
       dismissActiveOverlay();
     }
     if (action === "player") {
-      const panel = player.querySelector('[role="menu"]');
       const scope = panel || player;
       const target = scope.contains(document.activeElement) ? document.activeElement : scope;
       target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
@@ -70,6 +74,7 @@ export function installAndroidBack({ getNavDepth = () => 0, navigateBack } = {})
     if (action === "nav") navigateBack();
     return action !== null;
   };
+  handleBack.dismissOverlay = () => handleBack(true);
   window.streambertAndroidBack = handleBack;
   return () => {
     if (window.streambertAndroidBack === handleBack) delete window.streambertAndroidBack;

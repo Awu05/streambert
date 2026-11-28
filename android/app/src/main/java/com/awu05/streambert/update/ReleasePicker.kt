@@ -1,7 +1,6 @@
 package com.awu05.streambert.update
 
 import org.json.JSONArray
-import org.json.JSONException
 
 data class AvailableUpdate(
     val version: Version,
@@ -12,13 +11,6 @@ data class AvailableUpdate(
 )
 
 object ReleasePicker {
-    fun pick(releasesJson: String, installed: Version): AvailableUpdate? =
-        try {
-            pick(JSONArray(releasesJson), installed)
-        } catch (_: JSONException) {
-            null
-        }
-
     internal fun pick(releases: JSONArray, installed: Version): AvailableUpdate? {
         var newest: AvailableUpdate? = null
         for (index in 0 until releases.length()) {
@@ -30,7 +22,7 @@ object ReleasePicker {
             val assets = release.optJSONArray("assets") ?: continue
             for (assetIndex in 0 until assets.length()) {
                 val asset = assets.optJSONObject(assetIndex) ?: continue
-                if (!asset.optString("name").endsWith(".apk", ignoreCase = true)) continue
+                if (asset.optString("name") != "Streambert-Android-$tag.apk") continue
                 val url = asset.optString("browser_download_url")
                 val size = asset.optLong("size")
                 if (!url.startsWith("https://", ignoreCase = true) || size <= 0) continue

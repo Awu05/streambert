@@ -12,4 +12,8 @@ class Prefs(context: Context) {
     var lastUpdateCheck: Long
         get() = preferences.getLong("lastUpdateCheck", 0)
         set(value) = preferences.edit().putLong("lastUpdateCheck", value).apply()
+
+    var readyUpdateFile: String?
+        get() = preferences.getString("readyUpdateFile", null)
+        set(value) = preferences.edit().putString("readyUpdateFile", value).apply()
 }

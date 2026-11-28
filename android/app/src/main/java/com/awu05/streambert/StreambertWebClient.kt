@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -35,6 +36,11 @@ class StreambertWebClient(
 
     override fun onPageFinished(view: WebView, url: String) {
         if (loadingUrl == url) loadingUrl = null
+    }
+
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        activity.onRendererGone(view)
+        return true
     }
 
     override fun onReceivedError(

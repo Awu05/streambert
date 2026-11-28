@@ -1,11 +1,9 @@
 package com.awu05.streambert.update
 
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageInstaller
-import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.core.content.FileProvider
 import com.awu05.streambert.BuildConfig
 import java.io.File
 import java.io.IOException
@@ -14,8 +12,13 @@ import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 
 class UpdateInstaller(private val context: Context) {
+    private val directory = File(context.cacheDir, "updates")
+
     fun download(update: AvailableUpdate, onProgress: (Int) -> Unit): File {
-        val apk = File.createTempFile("streambert-update-", ".apk", context.cacheDir)
+        directory.mkdirs()
+        val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+        directory.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
+        val apk = File.createTempFile("streambert-", ".apk", directory)
         try {
             val connection = URL(update.apkUrl).openConnection() as HttpsURLConnection
             try {
@@ -52,7 +55,9 @@ class UpdateInstaller(private val context: Context) {
         }
     }
 
-    fun install(apk: File) {
+    fun installIntent(fileName: String): Intent {
+        val apk = File(directory, fileName)
+        if (apk.name != fileName || !apk.isFile) throw IOException("The downloaded APK is no longer available")
         @Suppress("DEPRECATION")
         val archive = context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
         if (archive == null || archive.packageName != context.packageName ||
@@ -61,30 +66,11 @@ class UpdateInstaller(private val context: Context) {
             throw IOException("This APK cannot update the installed Streambert app")
         }
 
-        val installer = context.packageManager.packageInstaller
-        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        params.setAppPackageName(context.packageName)
-        params.setSize(apk.length())
-        if (Build.VERSION.SDK_INT >= 31) {
-            params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
-        }
-        val sessionId = installer.createSession(params)
-        try {
-            installer.openSession(sessionId).use { session ->
-                session.openWrite("streambert.apk", 0, apk.length()).use { output ->
-                    apk.inputStream().use { it.copyTo(output) }
-                    session.fsync(output)
-                }
-                val result = PendingIntent.getBroadcast(
-                    context, sessionId, Intent(context, InstallResultReceiver::class.java),
-                    PendingIntent.FLAG_UPDATE_CURRENT or
-                        (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0),
-                )
-                session.commit(result.intentSender)
-            }
-        } catch (error: Exception) {
-            runCatching { installer.abandonSession(sessionId) }
-            throw error
-        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", apk)
+        return Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 }
+
+class UpdateFileProvider : FileProvider()

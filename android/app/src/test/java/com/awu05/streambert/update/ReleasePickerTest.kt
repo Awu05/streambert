@@ -1,6 +1,7 @@
 package com.awu05.streambert.update
 
 import java.io.IOException
+import com.awu05.streambert.update.UpdateChecker.ReleasePage
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -24,25 +25,50 @@ class ReleasePickerTest {
             .put(release("3.0.0").put("draft", true))
             .put(release("4.0.0").put("prerelease", true))
             .put(release("2.15.1"))
-        val update = ReleasePicker.pick(releases.toString(), installed)!!
+        val update = ReleasePicker.pick(releases, installed)!!
         assertEquals("2.16.0", update.tag)
         assertEquals("https://github.com/Streambert-Android-2.16.0.apk", update.apkUrl)
         assertEquals("1\n2\n3\n4\n5\n6", update.notes)
     }
 
-    @Test fun skipsMalformedListsAndOlderReleases() {
-        assertNull(ReleasePicker.pick("{oops", installed))
-        assertNull(ReleasePicker.pick("{}", installed))
-        assertNull(ReleasePicker.pick(JSONArray().put(release("2.15.0")).toString(), installed))
+    @Test fun skipsOlderReleasesAndUnrelatedApks() {
+        val unrelated = release("3.0.0")
+        unrelated.getJSONArray("assets").getJSONObject(0).put("name", "other.apk")
+        assertNull(ReleasePicker.pick(JSONArray().put(release("2.15.0")).put(unrelated), installed))
     }
 
     @Test fun checkerDistinguishesFailuresFromAnEmptyReleaseList() {
         val rateLimit = UpdateChecker { throw IOException("GitHub returned 403") }.check(installed)
         assertEquals("GitHub returned 403", rateLimit.exceptionOrNull()?.message)
-        assertTrue(UpdateChecker { "{}" }.check(installed).isFailure)
-        assertNull(UpdateChecker { "[]" }.check(installed).getOrThrow())
+        assertTrue(UpdateChecker { ReleasePage("{}") }.check(installed).isFailure)
+        assertNull(UpdateChecker { ReleasePage("[]") }.check(installed).getOrThrow())
         val releases = JSONArray().put(release("2.16.0")).toString()
-        assertEquals("2.16.0", UpdateChecker { releases }.check(installed).getOrThrow()?.tag)
+        assertEquals("2.16.0", UpdateChecker { ReleasePage(releases) }.check(installed).getOrThrow()?.tag)
+    }
+
+    @Test fun findsTheHighestUpdateAcrossReleasePages() {
+        val webOnly = JSONArray()
+        repeat(100) { webOnly.put(release("3.0.$it", apk = false)) }
+        val pages = listOf(
+            ReleasePage(webOnly.toString(), hasNext = true),
+            ReleasePage(JSONArray().put(release("2.16.0")).toString(), hasNext = true),
+            ReleasePage(JSONArray().put(release("2.17.0")).toString()),
+        )
+        val visited = mutableListOf<Int>()
+        val update = UpdateChecker { page ->
+            visited.add(page)
+            pages[page - 1]
+        }.check(installed).getOrThrow()
+        assertEquals(listOf(1, 2, 3), visited)
+        assertEquals("2.17.0", update?.tag)
+    }
+
+    @Test fun reportsAnIncompleteSearchAsAnError() {
+        val result = UpdateChecker { page ->
+            if (page == 1) ReleasePage("[]", hasNext = true)
+            else throw IOException("GitHub returned 503")
+        }.check(installed)
+        assertEquals("GitHub returned 503", result.exceptionOrNull()?.message)
     }
 
     private fun release(tag: String, apk: Boolean = true): JSONObject {

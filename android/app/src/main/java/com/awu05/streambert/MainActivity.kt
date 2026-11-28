@@ -1,8 +1,12 @@
 package com.awu05.streambert
 
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.AttributeSet
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -13,6 +17,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,11 +33,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var prefs: Prefs
     private lateinit var updates: UpdateController
     private lateinit var webSurface: FrameLayout
-    private lateinit var fullscreenSurface: FrameLayout
+    private lateinit var fullscreenSurface: FullscreenSurface
     private lateinit var serverError: View
     private var origin: String? = null
     private var webView: WebView? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+    private var fullscreenBackCallback: OnBackInvokedCallback? = null
     private var backPending = false
     private var exitDialog: AlertDialog? = null
     private var setupOpen = false
@@ -53,6 +60,7 @@ class MainActivity : ComponentActivity() {
         setContentView(R.layout.activity_main)
         webSurface = findViewById(R.id.web_surface)
         fullscreenSurface = findViewById(R.id.fullscreen_surface)
+        fullscreenSurface.onBack = ::handleBack
         serverError = findViewById(R.id.server_error)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
@@ -75,6 +83,7 @@ class MainActivity : ComponentActivity() {
                 systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 hide(WindowInsetsCompat.Type.systemBars())
             }
+            if (::updates.isInitialized) updates.onWindowAvailable()
         }
     }
 
@@ -111,6 +120,11 @@ class MainActivity : ComponentActivity() {
                 fullscreenSurface.isVisible = true
                 webSurface.isVisible = false
                 view.requestFocus()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val back = OnBackInvokedCallback(::handleBack)
+                    fullscreenBackCallback = back
+                    onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, back)
+                }
             }
 
             override fun onHideCustomView() = hideFullscreen()
@@ -136,14 +150,28 @@ class MainActivity : ComponentActivity() {
         findViewById<View>(R.id.retry).requestFocus()
     }
 
-    private fun hideFullscreen() {
+    fun onRendererGone(page: WebView) {
+        if (webView !== page) return
+        backPending = false
+        hideFullscreen(notifyPage = false)
+        disposeWebView()
+        showServerError(R.string.web_view_stopped)
+    }
+
+    private fun hideFullscreen(notifyPage: Boolean = true) {
         val callback = customViewCallback ?: return
         customViewCallback = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            fullscreenBackCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
+            fullscreenBackCallback = null
+        }
         fullscreenSurface.removeAllViews()
         fullscreenSurface.isVisible = false
         webSurface.isVisible = !serverError.isVisible
-        webView?.requestFocus()
-        callback.onCustomViewHidden()
+        if (notifyPage) {
+            webView?.requestFocus()
+            callback.onCustomViewHidden()
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
@@ -156,10 +184,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleBack() {
-        if (customViewCallback != null) {
-            hideFullscreen()
-            return
-        }
         val page = webView
         if (serverError.isVisible || page == null) {
             finish()
@@ -167,11 +191,22 @@ class MainActivity : ComponentActivity() {
         }
         if (backPending || exitDialog?.isShowing == true) return
         backPending = true
-        page.evaluateJavascript("typeof window.streambertAndroidBack === 'function' && window.streambertAndroidBack()") { handled ->
+        val fullscreen = customViewCallback != null
+        val backAction = if (fullscreen) {
+            "window.streambertAndroidBack?.dismissOverlay?.() === true"
+        } else {
+            "typeof window.streambertAndroidBack === 'function' && window.streambertAndroidBack()"
+        }
+        page.evaluateJavascript(backAction) { handled ->
             if (webView != page || isFinishing || isDestroyed) return@evaluateJavascript
             backPending = false
             if (handled == "true" || serverError.isVisible || setupOpen) return@evaluateJavascript
-            if (page.canGoBack()) {
+            if (fullscreen) {
+                hideFullscreen()
+                return@evaluateJavascript
+            }
+            val atSignIn = page.url?.let(Uri::parse)?.path == "/login"
+            if (!atSignIn && page.canGoBack()) {
                 page.goBack()
                 return@evaluateJavascript
             }
@@ -179,6 +214,7 @@ class MainActivity : ComponentActivity() {
                 .setTitle(R.string.exit_title)
                 .setPositiveButton(R.string.exit) { _, _ -> finish() }
                 .setNegativeButton(android.R.string.cancel, null)
+                .setNeutralButton(R.string.change_server) { _, _ -> changeServer() }
                 .show().apply { getButton(AlertDialog.BUTTON_NEGATIVE).requestFocus() }
         }
     }
@@ -210,5 +246,16 @@ class MainActivity : ComponentActivity() {
         exitDialog?.dismiss()
         disposeWebView()
         super.onDestroy()
+    }
+}
+
+class FullscreenSurface(context: Context, attrs: AttributeSet) : FrameLayout(context, attrs) {
+    var onBack: (() -> Unit)? = null
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val back = onBack
+        if (event.keyCode != KeyEvent.KEYCODE_BACK || back == null) return super.dispatchKeyEvent(event)
+        if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) back()
+        return true
     }
 }
