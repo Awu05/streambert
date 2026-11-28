@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { dashLevels } from "../web/dashLevels";
 import { mapPlayerKey } from "../web/playerKeys";
+import { isAndroidApp } from "../web/androidApp";
 import { pickInDirection } from "../utils/gamepadSpatialNav";
 import { trackLanguage } from "../web/subtitleLabel";
 import { activeSkipSegment, fetchSkipSegments } from "../web/skipSegments";
@@ -455,7 +456,7 @@ function Player({
     }
     // Focus on the video itself: remote shortcuts.
     if (target === container.current) {
-      const mapped = mapPlayerKey(event, { lastDownAt: lastDown.current, now: Date.now() });
+      const mapped = mapPlayerKey(event, { lastDownAt: lastDown.current, now: Date.now() }, { downExits: !isAndroidApp() });
       lastDown.current = mapped.lastDownAt;
       if (!mapped.action) return;
       event.preventDefault();
@@ -474,6 +475,7 @@ function Player({
       event.preventDefault();
       event.stopPropagation();
       if (inPanel) panelBack();
+      else if (isAndroidApp()) onClose();
       else container.current.focus();
       return;
     }

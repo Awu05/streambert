@@ -39,6 +39,7 @@ import UpdateModal from "./components/UpdateModal";
 import { useGamepadNav } from "./utils/useGamepadNav";
 import { useTvRemoteMode } from "./utils/tvRemoteMode";
 import { useKeyboardNav } from "./utils/useKeyboardNav";
+import { installAndroidBack, isAndroidApp } from "./web/androidApp";
 import { enableDragScroll } from "./utils/dragScroll";
 
 // Lazy-loaded pages: each chunk is only downloaded when the user first visits
@@ -706,12 +707,16 @@ export default function App() {
   // Refs so navigate/navigateBack never need page/selected as deps
   const pageRef = useRef(page);
   const selectedRef = useRef(selected);
+  const navStackRef = useRef(navStack);
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+  useEffect(() => {
+    navStackRef.current = navStack;
+  }, [navStack]);
 
   const navigateBack = useCallback(() => {
     setNavStack((prev) => {
@@ -812,6 +817,11 @@ export default function App() {
     window.electron?.setTvRemoteMode?.(tvRemote);
   }, [tvRemote]);
   useKeyboardNav({ enabled: tvRemote, onBack: navigateBack });
+  useEffect(() => {
+    if (isAndroidApp()) {
+      return installAndroidBack({ getNavDepth: () => navStackRef.current.length, navigateBack });
+    }
+  }, [navigateBack]);
   useEffect(
     () =>
       window.electron?.envDefaults?.dragScroll ? enableDragScroll() : undefined,
