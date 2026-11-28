@@ -87,10 +87,9 @@ jobs:
 
       - uses: android-actions/setup-android@v3
         if: steps.changes.outputs.build == 'true'
-
-      - name: Install Android SDK packages
-        if: steps.changes.outputs.build == 'true'
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: platforms;android-35 build-tools;35.0.0
 
       - uses: gradle/actions/setup-gradle@v4
         if: steps.changes.outputs.build == 'true'
