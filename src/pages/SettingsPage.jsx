@@ -6,6 +6,8 @@ import { setGamepadFocus } from "../utils/gamepadSpatialNav";
 import { SETTINGS_TABS, tabForSection } from "../utils/settingsTabs";
 import { AGE_LIMIT_OPTIONS, canManageHousehold, isKidsProfile } from "../utils/profile";
 import SourcesSection from "../components/settings/SourcesSection";
+import AndroidAppSection from "../components/settings/AndroidAppSection";
+import { isAndroidApp } from "../web/androidApp";
 import Toggle from "../components/Toggle";
 import UpdateModal from "../components/UpdateModal";
 import {
@@ -1705,7 +1707,7 @@ function AppearanceSection() {
             </div>
             <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
               Use arrow keys and Enter (TV remotes) to move around and control
-              playback: Enter play/pause, ←/→ seek, ↓ twice or Back to exit.
+              playback: Enter play/pause, ←/→ seek, {isAndroidApp() ? "Back to exit." : "↓ twice or Back to exit."}
             </div>
           </div>
         </div>
@@ -2614,6 +2616,8 @@ const SECTION_NAV = [
     keywords: [
       "update",
       "version",
+      "android",
+      "server",
       "tmdb",
       "api",
       "token",
@@ -3804,6 +3808,7 @@ export default function SettingsPage({
             {!hasCapability("updater") && window.electron?.appVersion && <p className="app-version app-version--settings">
               {t("settings.version.running", { version: window.electron.appVersion })}
             </p>}
+            {isAndroidApp() && <><AndroidAppSection /><Divider /></>}
 
             {/* TMDB API Token */}
             {!kids && <><div style={{ marginBottom: 40 }}>
