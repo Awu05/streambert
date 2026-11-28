@@ -1,0 +1,130 @@
+name: Android app
+
+on:
+  push:
+    tags: ["*"]
+  pull_request:
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the APK to (leave empty to build a debug APK)
+        type: string
+      force:
+        description: Build a release APK even if android/ did not change
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ inputs.tag || github.ref }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+      FORCE: ${{ inputs.force || false }}
+    outputs:
+      release: ${{ steps.changes.outputs.release }}
+      tag: ${{ env.TAG }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+      - name: Check for Android changes
+        id: changes
+        shell: bash
+        run: |
+          if [[ -z "$TAG" ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ref="refs/tags/$TAG"
+          git rev-parse --verify "$ref^{commit}" > /dev/null
+          previous=$(git describe --tags --abbrev=0 "$ref^" 2>/dev/null || true)
+          if [[ "$FORCE" == true || -z "$previous" ]] || [[ -n "$(git diff --name-only "refs/tags/$previous" "$ref" -- android/)" ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::android/ unchanged since $previous, no APK for $TAG"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.changes.outputs.build == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+        if: steps.changes.outputs.build == 'true'
+
+      - name: Install Android SDK packages
+        if: steps.changes.outputs.build == 'true'
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.changes.outputs.build == 'true'
+
+      - name: Build debug APK
+        if: steps.changes.outputs.build == 'true' && steps.changes.outputs.release != 'true'
+        working-directory: android
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Upload debug APK
+        if: steps.changes.outputs.build == 'true' && steps.changes.outputs.release != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: streambert-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Build signed release APK
+        if: steps.changes.outputs.release == 'true'
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STREAMBERT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          STREAMBERT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          STREAMBERT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export STREAMBERT_KEYSTORE="$RUNNER_TEMP/streambert-release.jks"
+          trap 'rm -f "$STREAMBERT_KEYSTORE"' EXIT
+          umask 077
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$STREAMBERT_KEYSTORE"
+          ./gradlew --no-daemon testReleaseUnitTest assembleRelease -PappVersion="$TAG"
+          mv app/build/outputs/apk/release/app-release.apk "Streambert-Android-$TAG.apk"
+
+      - name: Upload signed APK
+        if: steps.changes.outputs.release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: streambert-android-release
+          path: android/Streambert-Android-*.apk
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: needs.build.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: streambert-android-release
+
+      - name: Attach APK to the release
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes ||
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
+          gh release upload "$TAG" "Streambert-Android-$TAG.apk" --repo "$GITHUB_REPOSITORY" --clobber

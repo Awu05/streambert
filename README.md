@@ -63,11 +63,15 @@ Media Files for Animes are scraped from AllManga.to (i stole this mechanic from 
 On first launch you'll be prompted to enter your TMDB API key. ([Guide on how to get one](tmdb-tutorial.md))
 It's saved locally, you only need to do this once.
 
-Installers for every platform are attached to each [release](https://github.com/Awu05/streambert/releases/latest). They aren't code-signed, so Windows and macOS warn the first time you open them (see below). Once installed, the app updates itself from new releases.
+Desktop installers are attached to each [release](https://github.com/Awu05/streambert/releases/latest). They aren't code-signed, so Windows and macOS warn the first time you open them (see below). Once installed, the app updates itself from new releases.
 
 ### Self-hosted web app (Docker)
 
 Run Streambert on a server and use it from any browser, phone or TV. See the [Docker guide](docker/README.md).
+
+### Android / Android TV
+
+The Android app connects to your self-hosted Streambert web server and supports TV remotes, phones, and tablets. Android releases include a signed APK when the app changes. See the [Android guide](android/README.md) for installation, setup, and builds.
 
 ### Linux, Manual (.deb / .rpm / .AppImage / .pacman)
 

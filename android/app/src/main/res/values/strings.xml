@@ -1,0 +1,23 @@
+<resources>
+    <string name="server_address">Streambert server address</string>
+    <string name="connect">Connect</string>
+    <string name="connecting">Connecting…</string>
+    <string name="server_unreachable">Can’t reach your Streambert server</string>
+    <string name="server_not_found">No Streambert server answered at %1$s</string>
+    <string name="certificate_untrusted">The server’s security certificate isn’t trusted</string>
+    <string name="retry">Retry</string>
+    <string name="change_server">Change server</string>
+    <string name="exit_title">Exit Streambert?</string>
+    <string name="exit">Exit</string>
+    <string name="no_player">No app is installed that can play this</string>
+    <string name="no_link_app">No app can open this link</string>
+    <string name="update_available">Update available: %1$s</string>
+    <string name="update_check_failed">Couldn’t check for updates</string>
+    <string name="update_install_failed">Couldn’t install the update</string>
+    <string name="update_permission_title">Allow Streambert to install updates</string>
+    <string name="update_permission_required">Updates need permission to install apps</string>
+    <string name="update_debug_build">Release APKs can only update the release app</string>
+    <string name="update_downloading">Downloading update… %1$d%%</string>
+    <string name="install">Install</string>
+    <string name="later">Later</string>
+</resources>
