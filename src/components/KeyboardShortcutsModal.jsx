@@ -15,6 +15,9 @@ export default function KeyboardShortcutsModal({ onClose }) {
   return (
     <div
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("shortcuts.title")}
       style={{
         position: "fixed",
         inset: 0,

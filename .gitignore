@@ -12,3 +12,11 @@ downloads/
 
 # Docker settings with passwords (copy .env.example)
 .env
+
+android/.gradle/
+android/.kotlin/
+android/**/build/
+android/local.properties
+android/keystore.properties
+*.jks
+*.keystore

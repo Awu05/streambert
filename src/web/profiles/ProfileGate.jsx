@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useKeyboardNav } from "../../utils/useKeyboardNav";
 import { useGamepadNav } from "../../utils/useGamepadNav";
+import { installAndroidBack, isAndroidApp } from "../androidApp";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileDialog from "./ProfileDialog";
 import PinPad from "./PinPad";
@@ -20,6 +21,9 @@ export default function ProfileGate() {
   const [loading, setLoading] = useState(true);
   useKeyboardNav({ enabled: true });
   useGamepadNav({ enabled: true });
+  useEffect(() => {
+    if (isAndroidApp()) return installAndroidBack();
+  }, []);
 
   async function load() {
     setError(null);
