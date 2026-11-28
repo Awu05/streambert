@@ -741,6 +741,11 @@ export default function App() {
     }
   }, []);
 
+  // Opening a different movie or show starts at the top of the page.
+  useEffect(() => {
+    if (page === "movie" || page === "tv") document.querySelector(".main")?.scrollTo(0, 0);
+  }, [page, selected?.id]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
@@ -1139,6 +1144,7 @@ export default function App() {
             )}
             {page === "movie" && selected && (
               <MoviePage
+                key={`movie_${selected.id}`}
                 item={selected}
                 apiKey={apiKey}
                 playerSettings={playerSettings}
@@ -1162,6 +1168,7 @@ export default function App() {
             )}
             {page === "tv" && selected && (
               <TVPage
+                key={`tv_${selected.id}`}
                 item={selected}
                 apiKey={apiKey}
                 playerSettings={playerSettings}
@@ -1181,6 +1188,7 @@ export default function App() {
                 downloads={ownDownloads}
                 onGoToDownloads={handleGoToDownloads}
                 onEpisodeChange={setWatchingEpisode}
+                onSelect={handleSelectResult}
               />
             )}
             {page === "history" && (

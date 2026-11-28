@@ -27,7 +27,11 @@
     "removePin": "Remove PIN",
     "removePinConfirm": "Remove the PIN for {{name}}?",
     "pinMismatch": "The PINs do not match. Enter your new PIN again.",
-    "pinStep": { "current": "Enter your current PIN", "new": "Enter a new PIN", "confirm": "Confirm your new PIN" },
+    "pinStep": {
+      "current": "Enter your current PIN",
+      "new": "Enter a new PIN",
+      "confirm": "Confirm your new PIN"
+    },
     "locked": "Too many tries. Try again in {{minutes}} min.",
     "managed": "Managed by the main profile.",
     "tmdbRequired": "The main profile needs to add a TMDB token before you can browse titles.",
@@ -1167,6 +1171,30 @@
       "playing": "Playing",
       "downloadingClickView": "Downloading… - click to view in Downloads",
       "downloadedClickView": "Downloaded - click to view in Downloads"
+    }
+  },
+  "detail": {
+    "cast": "Cast",
+    "seeAll": "See all",
+    "moreLikeThis": "More like this",
+    "details": "Details",
+    "seasonsValue": "{{seasons}} seasons · {{episodes}} episodes",
+    "fields": {
+      "director": "Director",
+      "directors": "Directors",
+      "createdBy": "Created by",
+      "writers": "Writers",
+      "releaseDate": "Release date",
+      "firstAired": "First aired",
+      "lastAired": "Last aired",
+      "seasons": "Seasons",
+      "networks": "Networks",
+      "studios": "Studios",
+      "originalTitle": "Original title",
+      "originalLanguage": "Original language",
+      "budget": "Budget",
+      "revenue": "Box office",
+      "status": "Status"
     }
   }
 }

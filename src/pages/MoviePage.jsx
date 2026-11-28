@@ -55,6 +55,7 @@ import TrailerModal from "../components/TrailerModal";
 import BlockedStatsModal from "../components/BlockedStatsModal";
 import { useBlockedStats } from "../utils/useBlockedStats";
 import MediaCard from "../components/MediaCard";
+import { CastStrip, DetailsPanel, MoreLikeThis } from "../components/DetailSections";
 import {
   storage,
   STORAGE_KEYS,
@@ -1396,6 +1397,8 @@ export default function MoviePage({
         </div>
       )}
 
+      <CastStrip cast={credits.cast} onShowAll={() => setShowCast(true)} />
+
       {collection && onSelect && (
         <div className="section">
           <div className="section-title">{collection.name}</div>
@@ -1420,6 +1423,10 @@ export default function MoviePage({
           </div>
         </div>
       )}
+
+      <MoreLikeThis type="movie" id={item.id} apiKey={apiKey} onSelect={onSelect} progress={progress}
+        watched={watched} onMarkWatched={onMarkWatched} onMarkUnwatched={onMarkUnwatched} />
+      <DetailsPanel type="movie" details={details} crew={credits.crew} />
 
       {showTrailer && trailerKey && (
         <TrailerModal
