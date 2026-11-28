@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { imgUrl } from "../utils/api";
 
-const normalizeCastPerson = (person) => {
+export const normalizeCastPerson = (person) => {
   if (Array.isArray(person.roles)) {
     return {
       ...person,
@@ -31,7 +31,7 @@ const normalizeCrewPerson = (person) => {
 };
 
 // Keep the first entry per person id (crew can list one person many times).
-const dedupeById = (people) => {
+export const dedupeById = (people) => {
   const seen = new Set();
   return people.filter((p) => {
     if (seen.has(p.id)) return false;
@@ -40,14 +40,14 @@ const dedupeById = (people) => {
   });
 };
 
-const getDirectors = (crew) =>
+export const getDirectors = (crew) =>
   dedupeById(
     crew
       .map(normalizeCrewPerson)
       .filter((person) => person.jobList.includes("Director")),
   );
 
-const getWriters = (crew) => {
+export const getWriters = (crew) => {
   const writerJobs = ["Screenplay", "Writer", "Story", "Novel"];
   return dedupeById(
     crew
@@ -58,7 +58,7 @@ const getWriters = (crew) => {
   );
 };
 
-function PersonCard({ person }) {
+export function PersonCard({ person }) {
   const subtitle =
     person.characterList?.join(", ") || person.jobList?.join(", ") || "";
 

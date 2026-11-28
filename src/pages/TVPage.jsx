@@ -79,6 +79,7 @@ import {
   getRatingCountry,
 } from "../utils/ageRating";
 import CastModal from "../components/CastModal";
+import { CastStrip, DetailsPanel, MoreLikeThis } from "../components/DetailSections";
 import { useCredits } from "../utils/useCredits";
 import {
   GAMEPAD_PLAYER_SCRIPT,
@@ -440,6 +441,7 @@ export default function TVPage({
   downloads,
   onGoToDownloads,
   onEpisodeChange,
+  onSelect,
 }) {
   const { t } = useTranslation();
   const [details, setDetails] = useState(null);
@@ -2720,6 +2722,13 @@ export default function TVPage({
           </div>
         </>
       )}
+
+      {!loading && <>
+        <CastStrip cast={credits.cast} onShowAll={() => setShowCast(true)} />
+        <MoreLikeThis type="tv" id={item.id} apiKey={apiKey} onSelect={onSelect} progress={progress}
+          watched={watched} onMarkWatched={onMarkWatched} onMarkUnwatched={onMarkUnwatched} />
+        <DetailsPanel type="tv" details={details} crew={credits.crew} creators={details?.created_by || []} />
+      </>}
 
       {showTrailer && trailerKey && (
         <TrailerModal

@@ -4135,3 +4135,13 @@ html[data-win-titlebar][data-maximized] .main {
 /* Deployed version label (web app: profile picker and Settings → General) */
 .app-version { margin: 24px 0 0; font-size: 12px; color: var(--text3); }
 .app-version--settings { margin: 0 0 24px; }
+
+/* Detail pages: cast strip, more like this, details */
+.detail-section-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.detail-section-head .section-title { flex: 1; margin-bottom: 0; }
+.detail-cast-row .cast-person { flex-shrink: 0; width: 104px; }
+.detail-cast-row .cast-person-name, .detail-cast-row .cast-person-character { max-width: 100%; overflow-wrap: anywhere; }
+.detail-tagline { margin: 0 0 16px; color: var(--text2); font-style: italic; }
+.detail-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px 32px; margin: 0; }
+.detail-fact dt { margin-bottom: 4px; color: var(--text3); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.detail-fact dd { margin: 0; color: var(--text); }

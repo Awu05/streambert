@@ -90,6 +90,7 @@ const CarouselSlot = memo(function CarouselSlot({
             month: "short",
             day: "numeric",
             year: "numeric",
+            timeZone: "UTC", // TMDB dates have no time
           })
         : null,
     [rawDate],
